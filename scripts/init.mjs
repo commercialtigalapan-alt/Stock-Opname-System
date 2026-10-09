@@ -1,0 +1,10 @@
+import {load,commit} from '../src/store.mjs';
+import {createRuntime} from '../src/runtime.mjs';
+import {seed} from '../src/seed.mjs';
+if(!process.env.APP_AUTH_SECRET||process.env.APP_AUTH_SECRET.includes('CHANGE_ME'))throw Error('Isi APP_AUTH_SECRET dulu');
+const state=await load();if(Object.keys(state.sheets).length)throw Error('Database sudah berisi data. Init dihentikan agar tidak menimpa.');
+const r=seed(createRuntime(state,{origin:process.env.APP_ORIGIN}),{email:process.env.ADMIN_EMAIL,name:process.env.ADMIN_NAME,username:process.env.ADMIN_USERNAME,password:process.env.ADMIN_PASSWORD});
+r.state.properties.V126_AUTH_SECRET=process.env.APP_AUTH_SECRET;
+for(const handler of ['runReminderEngine','runAutoSchedulerV9','runStorageHousekeepingV107','runStorageLifecycleV123'])r.state.triggers.push({id:crypto.randomUUID(),handler,intervalMs:3600000,nextAt:Date.now()+3600000});
+r.state.triggers.push({id:crypto.randomUUID(),handler:'runSoaDailyBackup',intervalMs:86400000,nextAt:Date.now()+86400000});
+await r.files.upload();await commit(r);console.log('Database awal dan Super Admin berhasil dibuat. Username: '+process.env.ADMIN_USERNAME);
