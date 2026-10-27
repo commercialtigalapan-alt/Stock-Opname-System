@@ -33,7 +33,8 @@ const isoUTC=d=>d.toISOString().slice(0,10);
 state.dash.range=newRange();state.sch.range=newRange();state.exp.range=newRange();
 const fmtDate=d=>d?new Date(d+'T00:00:00').toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'}):'—';
 const fmtShort=d=>new Date(d+'T00:00:00').toLocaleDateString('id-ID',{day:'numeric',month:'short'});
-const ini=s=>((String(s||'?').split('@')[0]).match(/[a-zA-Z0-9]/g)||['?']).slice(0,2).join('').toUpperCase();
+const ini=s=>{const t=String(s||'?').split('@')[0].trim();const w=t.split(/\s+/).filter(Boolean);
+ return (w.length>1?w[0][0]+w[1][0]:((t.match(/[a-zA-Z0-9]/g)||['?']).slice(0,2).join(''))).toUpperCase()};
 const ROLE_LABEL={admin:'Admin',spv:'SPV',store:'Store'};
 const TONE={SCHEDULED:'blue',COUNTING:'blue',RECOUNT:'orange',SUBMITTED:'orange',APPROVED:'green','BELUM SO':'gray',BELUM:'gray',SELISIH:'red',TALLY:'green'};
 const chip=(s,label)=>`<span class="chip ${TONE[s]||'gray'}"><i></i>${escapeHTML(label||(s==='SUBMITTED'?'Validasi SPV':s)||'BELUM SO')}</span>`;
@@ -203,7 +204,7 @@ function shell(){
  <aside class="sidebar">
   <div class="side-head"><div class="brand-card"><img class="logo-img" src="logo.png" alt="Tigalapan OPR Division"/><div class="brand-text"><strong>TIGALAPAN</strong><small>STOCK OPNAME SYSTEM</small></div></div><button class="collapse" id="collapseBtn" title="Perkecil / perbesar menu">‹</button></div>
   <nav class="nav" id="nav"></nav>
-  <div class="side-foot"><div class="avatar">${escapeHTML(ini(state.me.email))}</div><div class="who"><strong>${escapeHTML(state.me.email)}</strong><small>${ROLE_LABEL[state.me.role]} · ${state.me.role==='store'?escapeHTML(labelStore(state.me.store_code)):'Semua area'}</small></div></div>
+  <div class="side-foot"><div class="avatar">${escapeHTML(ini(state.me.name||state.me.email))}</div><div class="who"><strong title="${escapeHTML(state.me.email)}">${escapeHTML(state.me.name||state.me.email)}</strong><small>${ROLE_LABEL[state.me.role]} · ${state.me.role==='store'?escapeHTML(labelStore(state.me.store_code)):'Semua area'}</small></div></div>
  </aside>
  <main class="main">
   <header class="topbar"><div class="titles"><h1 id="topTitle"></h1><p id="topSubtitle"></p></div>
@@ -1112,9 +1113,13 @@ function renderRetailPreview(rows){
  <p class="small muted">Menampilkan 80 baris pertama dari ${n(rows.length)} item.</p>`;
 }
 async function loadUploadHistory(){
- const box=$('#uploadHistory');if(!box||!state.store)return;
- const rows=await rpc('upload_history',{p_store:state.store});
- box.innerHTML=`<h3 class="heading">Riwayat Upload ${escapeHTML(labelStore(state.store))}</h3>${rows.length?`<div class="tablewrap"><table><thead><tr><th>Waktu</th><th class="num">SKU</th><th>Diupload oleh</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${escapeHTML(new Date(r.uploaded_at).toLocaleString('id-ID'))}</td><td class="num">${n(r.sku_count)}</td><td>${escapeHTML(r.uploaded_by||'-')}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">Belum ada riwayat upload.</div>'}`;
+ const box=$('#uploadHistory');if(!box)return;
+ const all=isAdmin();
+ if(!all&&!state.store)return;
+ const rows=await rpc('upload_history',all?{p_store:null,p_limit:200}:{p_store:state.store,p_limit:20});
+ const title=all?'Riwayat Upload Semua Toko':`Riwayat Upload ${escapeHTML(labelStore(state.store))}`;
+ const line=r=>`<tr><td>${escapeHTML(new Date(r.uploaded_at).toLocaleString('id-ID'))}</td>${all?`<td><b>${escapeHTML(r.store_name)}</b><br><small class="mono muted">${escapeHTML(r.store_code)}</small></td><td>${escapeHTML(r.area||'—')}</td>`:''}<td class="num">${n(r.sku_count)}</td><td>${escapeHTML(r.uploaded_by||'-')}</td></tr>`;
+ box.innerHTML=`<h3 class="heading">${title}</h3>${rows.length?`<div class="tablewrap"><table><thead><tr><th>Waktu</th>${all?'<th>Toko</th><th>Area</th>':''}<th class="num">SKU</th><th>Diupload oleh</th></tr></thead><tbody>${rows.map(line).join('')}</tbody></table></div>`:'<div class="empty">Belum ada riwayat upload.</div>'}`;
 }
 
 /* ---------- Manajemen Akses (Admin) ---------- */
@@ -1126,22 +1131,28 @@ async function showAdmin(){
  $('#content').innerHTML=`<div class="card">
    <div class="card-head"><h3>1. Aktivasi Akun Baru</h3><span class="muted small">${n(unknown.length)} akun menunggu</span></div>
    <p class="small muted">Admin memilih role dan toko untuk akun yang sudah terdaftar di Supabase Auth.</p>
-   <div class="toolbar"><select class="input select grow" id="newUser"><option value="">Pilih akun belum aktif</option>${unknown.map(x=>`<option value="${escapeHTML(x.id)}">${escapeHTML(x.email)}</option>`).join('')}</select><select class="input select" id="newRole"><option value="store">STORE</option><option value="spv">SPV</option><option value="admin">ADMIN</option></select><select class="input select" id="newStore"><option value="">Pilih toko (khusus Store)</option>${state.stores.map(s=>`<option value="${escapeHTML(s.code)}">${escapeHTML(s.name)}</option>`).join('')}</select>${btn('Aktifkan User','activate-user','primary')}</div>
+   <div class="toolbar"><select class="input select grow" id="newUser"><option value="">Pilih akun belum aktif</option>${unknown.map(x=>`<option value="${escapeHTML(x.id)}">${escapeHTML(x.email)}</option>`).join('')}</select><select class="input select" id="newRole"><option value="store">STORE</option><option value="spv">SPV</option><option value="admin">ADMIN</option></select><select class="input select" id="newStore"><option value="">Pilih toko (khusus Store)</option>${state.stores.map(s=>`<option value="${escapeHTML(s.code)}">${escapeHTML(s.name)}</option>`).join('')}</select><input class="input grow" id="newName" maxlength="80" placeholder="Nama lengkap (opsional)"/>${btn('Aktifkan User','activate-user','primary')}</div>
   </div>
   <div class="card"><div class="card-head"><h3>2. Akun Aktif</h3><span class="muted small">${n(users.length)} akun</span></div>
-   <div class="tablewrap"><table><thead><tr><th>Email</th><th>Role</th><th>Toko</th><th>Area SPV</th></tr></thead><tbody>${users.map(x=>`<tr><td>${escapeHTML(x.email)}</td><td>${chip(x.role.toUpperCase(),x.role.toUpperCase())}</td><td>${escapeHTML(x.store_code||'—')}</td><td>${escapeHTML((x.spv_stores||[]).map(labelStore).join(', ')||'—')}</td></tr>`).join('')||'<tr><td colspan="4" class="empty">Belum ada akun.</td></tr>'}</tbody></table></div></div>
+   <div class="tablewrap"><table><thead><tr><th>Nama</th><th>Email</th><th>Role</th><th>Toko</th><th>Area SPV</th></tr></thead><tbody>${users.map(x=>`<tr><td><div style="display:flex;gap:6px;align-items:center;min-width:260px"><input class="input" style="flex:1;min-width:0" id="uname-${escapeHTML(x.id)}" maxlength="80" value="${escapeHTML(x.full_name||'')}" placeholder="Isi nama"/><button class="btn outline sm" style="white-space:nowrap" data-act="save-user-name" data-id="${escapeHTML(x.id)}">Simpan</button></div></td><td class="mono small">${escapeHTML(x.email)}</td><td>${chip(x.role.toUpperCase(),x.role.toUpperCase())}</td><td>${escapeHTML(x.store_code||'—')}</td><td>${escapeHTML((x.spv_stores||[]).map(labelStore).join(', ')||'—')}</td></tr>`).join('')||'<tr><td colspan="4" class="empty">Belum ada akun.</td></tr>'}</tbody></table></div></div>
   <div class="card"><div class="card-head"><h3>3. SPV Mapping per Toko</h3><span class="muted small">${n(map.filter(x=>x.spv_user).length)} / ${n(map.length)} toko sudah punya SPV</span></div>
    <p class="small muted">Pilih area dan SPV untuk tiap toko. Perubahan tersimpan otomatis. SPV hanya melihat toko yang dipetakan kepadanya.</p>
    <div class="tablewrap"><table><thead><tr><th>Toko</th><th>Area</th><th>SPV</th></tr></thead><tbody>${map.map(x=>{const areaOpts=[...new Set([...SPV_AREAS,...(x.area?[x.area]:[])])];return `<tr><td><b>${escapeHTML(x.name)}</b><br><small class="mono muted">${escapeHTML(x.code)}</small></td>
     <td><select class="input select" data-change="map-area" data-store="${escapeHTML(x.code)}"><option value="">— Pilih area —</option>${areaOpts.map(a=>`<option value="${escapeHTML(a)}" ${a===x.area?'selected':''}>${escapeHTML(a)}</option>`).join('')}</select></td>
-    <td><select class="input select" data-change="map-spv" data-store="${escapeHTML(x.code)}"><option value="">— Belum ada SPV —</option>${spvs.map(s=>`<option value="${escapeHTML(s.id)}" ${s.id===x.spv_user?'selected':''}>${escapeHTML(s.email)}</option>`).join('')}</select></td></tr>`}).join('')||'<tr><td colspan="3" class="empty">Belum ada toko.</td></tr>'}</tbody></table></div></div>
+    <td><select class="input select" data-change="map-spv" data-store="${escapeHTML(x.code)}"><option value="">— Belum ada SPV —</option>${spvs.map(s=>`<option value="${escapeHTML(s.id)}" ${s.id===x.spv_user?'selected':''}>${escapeHTML(s.name||s.email)}</option>`).join('')}</select></td></tr>`}).join('')||'<tr><td colspan="3" class="empty">Belum ada toko.</td></tr>'}</tbody></table></div></div>
   <div class="card" id="auditCard"></div>`;
  loadAudit().catch(()=>{});
 }
 ACT['activate-user']=async()=>{
- const p_user=$('#newUser').value,p_role=$('#newRole').value,p_store=p_role==='store'?$('#newStore').value:null;
+ const p_user=$('#newUser').value,p_role=$('#newRole').value,p_store=p_role==='store'?$('#newStore').value:null,p_name=($('#newName')?.value||'').trim();
  if(!p_user)throw Error('Pilih akun yang akan diaktifkan.');
- await rpc('assign_user',{p_user,p_role,p_store});toast('Akun aktif');await render();
+ await rpc('assign_user',{p_user,p_role,p_store});
+ if(p_name)await rpc('set_user_name',{p_user,p_name});
+ toast('Akun aktif');await render();
+};
+ACT['save-user-name']=async el=>{
+ const id=el.dataset.id;const v=($('#uname-'+id)?.value||'').trim();
+ await rpc('set_user_name',{p_user:id,p_name:v});toast(v?'Nama tersimpan':'Nama dikosongkan (tampil email)');await render();
 };
 CHG['map-spv']=async el=>{await rpc('set_store_spv',{p_store:el.dataset.store,p_user:el.value||null});toast('SPV Mapping disimpan');await render()};
 CHG['map-area']=async el=>{await rpc('set_store_area',{p_store:el.dataset.store,p_area:el.value||null});toast('Area toko disimpan');await render()};
