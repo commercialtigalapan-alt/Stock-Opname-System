@@ -511,3 +511,154 @@ td .input{min-height:36px;padding:6px 10px}
  .kpi-v{font-size:21px}
  .calc-actions{grid-template-columns:1fr}
 }
+
+/* ===== v3: ukuran teks proporsional, filter ringkas, tanpa area hitam, kartu toko penuh, grid warna ringkas ===== */
+body{font-size:13px;line-height:1.4}
+.titles h1{font-size:18px;font-weight:800}
+.titles p{font-size:12px}
+.card{padding:14px;border-radius:14px}
+.card h3,.card-head h3{font-size:14px}
+.sec-title{font-size:13.5px;margin:14px 0 8px}
+.sec-title small{font-size:11.5px}
+.btn{font-size:12.5px;padding:7px 12px;border-radius:10px}
+.btn.sm{padding:5px 9px;font-size:12px}
+.btn.ghost{background:transparent;border:1px solid transparent;color:#9a3412}
+.btn.ghost:hover{background:#fff7ed}
+.btn.dark{background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff;border-color:transparent;box-shadow:0 6px 14px rgba(79,70,229,.22)}
+.btn.primary{background:linear-gradient(135deg,#fb923c,#f97316);color:#fff;border-color:transparent}
+.btn.danger{background:#fef2f2;color:#b91c1c;border-color:#fecaca}
+.input,.select{font-size:12.5px;padding:6px 9px;border-radius:9px}
+.field{font-size:12px;gap:4px;margin:6px 0}
+.tablewrap th,.tablewrap td{padding:7px 9px;font-size:12.5px}
+.tablewrap th{font-size:11px;letter-spacing:.03em}
+.toast{background:#fff;color:#1f2937;border:1px solid #fed7aa;box-shadow:0 10px 30px rgba(120,53,15,.15);font-size:12.5px}
+.seg{padding:3px;border-radius:10px}
+.seg button{padding:6px 10px;font-size:12px;border-radius:8px}
+.seg button.on{background:linear-gradient(135deg,#fb923c,#f97316);color:#fff}
+.pill-stat{font-size:11.5px;padding:4px 10px}
+.chip{font-size:10.5px;padding:3px 8px;gap:5px}
+.chip i{width:6px;height:6px}
+.nbadge{font-size:10px;min-width:20px;height:18px}
+.nav button{padding:8px 11px;font-size:12.5px;gap:10px}
+.logo{width:36px;height:36px;font-size:14px;border-radius:11px}
+.brand-text strong{font-size:13px}
+
+/* filter: satu baris, ringkas, bisa dibersihkan */
+.filter-card{padding:10px 12px;gap:6px}
+.filters{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.filters .select{width:auto;min-width:150px;max-width:220px;flex:0 1 auto}
+.range-ctl{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.range-ctl .select{min-width:130px;max-width:200px}
+.range-ctl .select.wide{min-width:230px;max-width:300px}
+.range-ctl .input[type=date],.range-ctl .input[type=month]{width:auto;min-width:130px}
+.range-sum{font-size:11px}
+.filter-card .note{margin:0;padding:7px 10px;font-size:11.5px}
+.toolbar{gap:6px}
+.toolbar-top{gap:8px}
+.toolbar-right{gap:6px}
+
+/* kartu KPI & ringkasan lebih kecil */
+.kpis,.vols{grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.kpi,.vol,.db-tile{padding:11px 13px;border-radius:14px}
+.kpi-l,.vol-l,.db-tile small{font-size:11px}
+.kpi-v,.vol-v{font-size:19px;margin:4px 0 2px}
+.kpi-s,.vol-s,.db-tile span{font-size:11px}
+.kpi.o{background:linear-gradient(135deg,#fff,#fff7ed)}
+.kpi.g{background:linear-gradient(135deg,#fff,#ecfdf5)}
+.kpi.a{background:linear-gradient(135deg,#fff,#fffbeb)}
+.kpi.r{background:linear-gradient(135deg,#fff,#fef2f2)}
+.db-tile b{font-size:17px;margin:3px 0}
+.mini{padding:9px 11px}
+.mini b{font-size:16px}
+.wf{padding:9px 12px}
+.wf b{font-size:18px}
+
+/* ringkasan toko: kartu penuh layar, warna per status */
+.store-grid{display:grid;grid-template-columns:repeat(var(--n,4),minmax(0,1fr));gap:10px;width:100%}
+@media (max-width:1100px){.store-grid{grid-template-columns:repeat(min(var(--n,4),3),minmax(0,1fr))}}
+@media (max-width:760px){.store-grid{grid-template-columns:repeat(min(var(--n,4),2),minmax(0,1fr))}}
+@media (max-width:480px){.store-grid{grid-template-columns:minmax(0,1fr)}}
+.store-card{position:relative;padding:12px 13px 12px 15px;border-radius:14px;background:#fff;border:1px solid var(--line);overflow:hidden}
+.store-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:#e5e7eb}
+.store-card.st-COUNTING::before,.store-card.st-RECOUNT::before{background:#3b82f6}
+.store-card.st-SUBMITTED::before{background:#f59e0b}
+.store-card.st-APPROVED{background:linear-gradient(135deg,#fff,#f0fdf4)}
+.store-card.st-APPROVED::before{background:#10b981}
+.store-card.st-SCHEDULED::before{background:#8b5cf6}
+.store-card.st-BELUM_SO::before,.store-card.st-NONE::before{background:#cbd5e1}
+.sc-head strong{font-size:13px}
+.sc-head small{font-size:11px}
+.sc-line{font-size:11.5px}
+
+/* sel & kolom tabel: angka dan status sejajar */
+.count-table,.val-table{min-width:0;width:100%}
+.count-table th,.count-table td,.val-table th,.val-table td{vertical-align:middle}
+.nm{min-width:0;width:auto}
+.nm-name{font-size:12.5px;font-weight:700;line-height:1.3}
+.nm-sub{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-top:3px}
+.team-tag{font-size:10.5px;color:#7c2d12;background:#fff7ed;border:1px solid #fed7aa;border-radius:99px;padding:1px 7px}
+.cchip{margin-top:0;padding:1px 7px 1px 3px;font-size:10.5px;gap:5px}
+.cchip i{width:11px;height:11px}
+.pos-wrap{min-width:0;gap:4px}
+.count-table .count-num,.count-num{width:72px;padding:6px 7px;font-size:12.5px;text-align:right}
+.pos-wrap .count-num{min-width:54px}
+.calc-btn{width:28px;height:28px;font-size:13px;border-radius:8px}
+.count-table td.num,.val-table td.num{font-variant-numeric:tabular-nums;min-width:58px}
+.total{font-weight:800}
+.noteval{min-width:160px;width:100%;font-size:12px}
+.reason-in{min-width:180px;width:100%;font-size:12px}
+.st-cell{white-space:nowrap;min-width:150px}
+.st-cell .chip{min-width:86px;justify-content:center}
+.st-cell .delta{margin-left:4px;font-size:12px;min-width:38px;text-align:right;display:inline-block;font-weight:700}
+.need-txt{display:inline-block;margin-left:6px;margin-top:0;font-size:10.5px}
+.spvqty{width:80px}
+.row-saving{opacity:.55}
+.calc-bg .calc-box{width:min(330px,100%)}
+.pager{font-size:12px}
+.footerhint{font-size:11px}
+
+/* builder: daftar warna ringkas tanpa scroll bersarang */
+.builder{padding:12px 16px;gap:12px}
+.modal{width:min(980px,100%)}
+.modal-head h3{font-size:15px}
+.step h4{font-size:13px}
+.crow-grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));max-height:none;gap:5px}
+.crow{padding:5px 8px;gap:0 6px;border-radius:10px;grid-template-columns:auto auto 1fr;align-items:center}
+.crow input{grid-row:auto}
+.crow em{display:none}
+.crow small{justify-self:end;font-size:10.5px}
+.cname{font-size:12px}
+.swatch{width:14px;height:14px;border-radius:5px}
+.cat-grid{grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:6px}
+.cat-block{padding:7px}
+.cat span b{font-size:12.5px}
+.prev-big{background:linear-gradient(135deg,#fb923c,#f97316);color:#fff;border-radius:14px;padding:12px 14px}
+.prev-big small{color:#ffedd5}
+.prev-big b{font-size:24px}
+.prev-big span{color:#fff7ed}
+.prev-stats b{font-size:12.5px}
+.scope-box{padding:10px;gap:8px}
+
+/* counting/validasi: kolom tidak terlalu lebar di desktop */
+@media (min-width:1100px){.count-table,.val-table{min-width:0}}
+@media (max-width:900px){.count-table,.val-table{min-width:880px}}
+
+/* ===== v3b: kolom nama lebih lebar, chip warna tidak terpotong, sidebar lebih ramping ===== */
+.app{grid-template-columns:236px minmax(0,1fr)}
+.app.collapsed{grid-template-columns:84px minmax(0,1fr)}
+.sidebar{padding:14px 11px;gap:10px}
+.nav button{padding:7px 10px}
+.nav-sec{margin:10px 8px 3px}
+.content{padding:16px 20px}
+.cchip{white-space:nowrap;max-width:100%}
+.nm{min-width:190px}
+.val-table .nm{min-width:220px}
+.count-table .nm{min-width:240px}
+.nm-name{white-space:normal}
+.val-table{min-width:1060px}
+.val-table th,.val-table td,.count-table th,.count-table td{padding:6px 8px}
+.val-table .reason-in{min-width:150px}
+.count-table .noteval{min-width:170px}
+.spvqty{width:76px}
+.count-table{min-width:960px}
+@media (max-width:1100px){.val-table{min-width:1000px}.count-table{min-width:920px}}

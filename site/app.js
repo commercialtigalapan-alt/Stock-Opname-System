@@ -151,10 +151,11 @@ function rangeControlHTML(p,r){
  }else if(r.kind==='custom'){
   extra=`<input class="input" type="date" value="${escapeHTML(r.from)}" data-change="rng" data-p="${p}" data-f="from" aria-label="Tanggal awal"/><span class="muted small">s/d</span><input class="input" type="date" value="${escapeHTML(r.to)}" data-change="rng" data-p="${p}" data-f="to" aria-label="Tanggal akhir"/>`;
  }
- return `<div class="range-ctl"><select class="input select" data-change="rng" data-p="${p}" data-f="kind">${Object.entries(RANGE_LABEL).map(([v,l])=>`<option value="${v}" ${r.kind===v?'selected':''}>${l}</option>`).join('')}</select>${extra}<span class="range-sum small muted">${escapeHTML(rangeSummary(r))}</span></div>`;
+ return `<div class="range-ctl"><select class="input select" data-change="rng" data-p="${p}" data-f="kind">${Object.entries(RANGE_LABEL).map(([v,l])=>`<option value="${v}" ${r.kind===v?'selected':''}>${l}</option>`).join('')}</select>${extra}<span class="range-sum small muted">${escapeHTML(rangeSummary(r))}</span>${r.kind!=='all'?`<button class="btn ghost sm" data-act="rng-clear" data-p="${p}">✕</button>`:''}</div>`;
 }
 const rangeOf=p=>p==='dash'?state.dash.range:p==='exp'?state.exp.range:state.sch.range;
 const rangeRefresh=p=>p==='dash'?showDashboard():p==='exp'?showExport():showSchedule();
+ACT['rng-clear']=async el=>{const r=rangeOf(el.dataset.p);r.kind='all';r.from='';r.to='';await rangeRefresh(el.dataset.p)};
 CHG['rng']=async el=>{
  const p=el.dataset.p,f=el.dataset.f,r=rangeOf(p);
  r[f]=el.value;
@@ -247,8 +248,9 @@ function accuracyOf(k){
  return{sku,qty,val};
 }
 const accOf=r=>accuracyOf(r);
+function gridStyle(n){return `style="--n:${Math.min(Math.max(n,1),4)}"`}
 function storeCard(s){const pv=s.total?Math.round(100*s.done/s.total):0;
- return `<div class="store-card"><div class="sc-head"><div><strong>${escapeHTML(s.name)}</strong><small>${escapeHTML(s.code)} • ${escapeHTML(s.area||'')}</small></div>${chip(s.status,s.status==='BELUM SO'?'BELUM SO':undefined)}</div>
+ return `<div class="store-card st-${escapeHTML(s.status||'NONE').replace(/\s+/g,'_')}"><div class="sc-head"><div><strong>${escapeHTML(s.name)}</strong><small>${escapeHTML(s.code)} • ${escapeHTML(s.area||'')}</small></div>${chip(s.status,s.status==='BELUM SO'?'BELUM SO':undefined)}</div>
  <div class="sc-line"><span>${n(s.done)} / ${n(s.total)} SKU selesai (SO berjalan)</span><b>${pv}%</b></div><div class="bar"><span style="width:${pv}%"></span></div></div>`;
 }
 function analyticsRows(rows){
@@ -294,7 +296,7 @@ async function showDashboard(){
    ${vol('a','Overdue',n(k.so_overdue),'SO terjadwal yang sudah lewat tanggal')}
   </div>
   <div class="sec-title">Ringkasan Toko <small>Progress SO berjalan per toko (status terkini)</small></div>
-  <div class="store-grid">${state.dashboard.length?state.dashboard.map(storeCard).join(''):'<div class="empty">Belum ada toko untuk akun ini.</div>'}</div>`;
+  <div class="store-grid" ${gridStyle(state.dashboard.length)}>${state.dashboard.length?state.dashboard.map(storeCard).join(''):'<div class="empty">Belum ada toko untuk akun ini.</div>'}</div>`;
  }
  if(d.tab==='acc'){
   const areas=areaRows(rows);
@@ -313,7 +315,7 @@ async function showDashboard(){
  }
  if(d.tab==='risk'){
   const list=state.dashboard.slice().sort((x,y)=>(x.total?x.done/x.total:0)-(y.total?y.done/y.total:0));
-  body=`<div class="store-grid">${list.map(storeCard).join('')||'<div class="empty">Belum ada data.</div>'}</div><p class="footerhint">Diurutkan dari progress terendah.</p>`;
+  body=`<div class="store-grid" ${gridStyle(list.length)}>${list.map(storeCard).join('')||'<div class="empty">Belum ada data.</div>'}</div><p class="footerhint">Diurutkan dari progress terendah.</p>`;
  }
  if(d.tab==='act'){
   body=isAdmin()?'<div class="card" id="auditCard"></div>':'<div class="empty">Log aktivitas hanya tersedia untuk Admin.</div>';
@@ -323,8 +325,8 @@ async function showDashboard(){
    <select class="input select" data-change="dash-filter" id="dStore">${storeOptions(d.store,true)}</select>
    <select class="input select" data-change="dash-filter" id="dType"><option value="">Semua Jenis SO</option><option value="GRAND" ${d.type==='GRAND'?'selected':''}>Grand SO</option><option value="PARTIAL" ${d.type==='PARTIAL'?'selected':''}>Partial SO</option></select>
    ${rangeControlHTML('dash',d.range)}
+   ${(d.store||d.type||d.range.kind!=='all')?'<button class="btn ghost sm" data-act="dash-reset">✕ Clear</button>':''}
   </div>
-  <div class="note info">Semua angka mengikuti filter toko, jenis, dan rentang. Akurasi hanya dari SO APPROVED.</div>
  </div>
  <div class="card tabs-card"><span class="tabs-lbl">ANALISA</span>${tabs.map(([id,l])=>`<button class="tab ${d.tab===id?'on':''}" data-act="dash-tab" data-tab="${id}">${l}</button>`).join('')}</div>
  ${body}`;
@@ -332,6 +334,7 @@ async function showDashboard(){
 }
 CHG['dash-filter']=async()=>{state.dash.store=$('#dStore').value;state.dash.type=$('#dType').value;await showDashboard()};
 ACT['dash-tab']=async el=>{state.dash.tab=el.dataset.tab;await showDashboard()};
+ACT['dash-reset']=async()=>{state.dash.store='';state.dash.type='';state.dash.range=newRange();await showDashboard()};
 
 /* ---------- Import CSV inventory ---------- */
 function parseCSV(text){
@@ -574,7 +577,7 @@ async function renderScope(){
  const modeSeg=`<div class="field"><span>Cara SO *</span><div class="seg">${modes.map(([v,l])=>`<button class="${b.scopeMode===v?'on':''}" data-act="b-mode" data-v="${v}">${l}</button>`).join('')}</div></div>`;
  let body='';
  if(b.scopeMode==='ALL'){
-  body=`<div class="scope-box"><b>Scope: seluruh SKU inventory toko</b><p class="small muted">Stok sistem diambil saat SO dimulai (Proses) dan ikut diperbarui jika inventory di-upload ulang. Pilih Category & Warna atau Bagi per Tim / POS bila SO hanya sebagian.</p></div>`;
+  body=`<div class="scope-box"><b>Scope: seluruh SKU inventory toko</b><p class="small muted">Stok sistem diambil saat SO dimulai (Proses) dan ikut diperbarui jika inventory di-upload ulang, sampai SO di-approve SPV. Pilih Category & Warna atau Bagi per Tim / POS bila SO hanya sebagian.</p></div>`;
  }else if(b.scopeMode==='SCOPE'){
   body=`<div class="scope-box">
     <div class="scope-head"><b>Category & Warna</b>
@@ -660,7 +663,7 @@ async function updatePreview(){
    ${b.scopeMode==='TEAMS'&&teamRes?`<div class="team-summary">${teamRes.teams.map(t=>`<div><span>${escapeHTML(t.name)}</span><b>${n(t.count)} SKU</b></div>`).join('')}</div>`:''}
    ${err?`<div class="note warning">${escapeHTML(err)}</div>`:''}
    ${info.sample?.length?`<div class="sku-cloud">${info.sample.map(s=>`<span class="sku-chip mono">${escapeHTML(s)}</span>`).join('')}${info.count>info.sample.length?`<span class="small muted">+${n(info.count-info.sample.length)} lainnya</span>`:''}</div>`:''}
-   <div class="note info small">Stok sistem diambil saat SO dimulai (Proses). Jika inventory di-upload ulang, system SO yang berjalan ikut diperbarui.</div>
+   <div class="note info small">Stok sistem diambil saat SO dimulai (Proses). Jika inventory di-upload ulang, system ikut diperbarui sampai SO di-approve SPV.</div>
  </div>`;
 }
 ACT['b-save']=async()=>{
@@ -765,26 +768,26 @@ async function loadCount(){
  $('#content').innerHTML=`${back}<div class="card">
   <div class="card-head"><div class="row"><h3>SO Berjalan</h3>${chip(data.status)}</div>${edit?btn('Submit Counting','count-submit','dark'):''}</div>
   <div class="toolbar"><input id="countSearch" class="input grow" placeholder="Cari SKU / nama produk" value="${escapeHTML(q.search)}"/>${teamSel}<select id="countFilter" class="input" data-change="count-filter-chg">${options}</select>${btn('Cari','count-find','outline')}${btn('📷 Scan','scan-count','outline')}</div>
-  <div class="tablewrap"><table id="countTable" class="count-table"><thead><tr><th>SKU</th><th>Nama Item & Warna</th>${POS.map(([,l])=>`<th class="num">${l}</th>`).join('')}<th class="num">Total</th><th>Alasan (wajib jika selisih)</th><th>Status</th></tr></thead><tbody>${data.items.length?data.items.map(x=>countRowHTML(x,edit)).join(''):'<tr><td colspan="9" class="empty">Tidak ada SKU</td></tr>'}</tbody></table></div>
-  <div class="pager"><span class="small muted">${n(data.total_filtered?q.offset+1:0)}–${n(Math.min(q.offset+50,data.total_filtered))} dari ${n(data.total_filtered)} SKU</span><div class="row">${btn('← Sebelumnya','count-prev','outline')}${btn('Berikutnya →','count-next','outline')}${edit?btn('Simpan Halaman','count-save','primary'):''}</div></div>
-  <div class="footerhint">Isi posisi dengan angka atau gunakan 🧮 untuk menambah/mengurangi berulang. Status langsung terlihat setelah input tersimpan otomatis.</div>
+  <div class="tablewrap"><table id="countTable" class="count-table"><thead><tr><th>Nama Item & Warna</th>${POS.map(([,l])=>`<th class="num">${l}</th>`).join('')}<th class="num">Total</th><th>Alasan (wajib jika selisih)</th><th>Status</th></tr></thead><tbody>${data.items.length?data.items.map(x=>countRowHTML(x,edit)).join(''):'<tr><td colspan="9" class="empty">Tidak ada SKU</td></tr>'}</tbody></table></div>
+  <div class="pager"><span class="small muted">${n(data.total_filtered?q.offset+1:0)}–${n(Math.min(q.offset+50,data.total_filtered))} dari ${n(data.total_filtered)} SKU</span><div class="row">${btn('← Sebelumnya','count-prev','outline')}${btn('Berikutnya →','count-next','outline')}</div></div>
+  <div class="footerhint">Input tersimpan otomatis per baris. Tekan Submit Counting untuk mengirim semua hasil ke validasi SPV.</div>
  </div>`;
  if(edit)restoreCountDraft(data.cycle_id);
 }
 function statusCell(status,reason){
+ const warn=status==='SELISIH'&&!String(reason||'').trim();
  if(status==='TALLY')return chip('TALLY');
- if(status==='SELISIH')return chip('SELISIH')+(String(reason||'').trim()?'':'<small class="need-txt">wajib alasan</small>');
+ if(status==='SELISIH')return chip('SELISIH')+(warn?'<small class="need-txt">wajib alasan</small>':'');
  return chip('BELUM','BELUM');
 }
 function countRowHTML(x,edit){
  const needsReason=x.status==='SELISIH'&&!(x.reason||'').trim();
  return `<tr data-sku="${escapeHTML(x.sku)}">
-  <td class="mono sku-cell"><strong>${escapeHTML(x.sku)}</strong>${x.team?`<small class="muted">${escapeHTML(x.team)}</small>`:''}</td>
-  <td class="nm"><div class="nm-name">${escapeHTML(x.name)}</div>${colorChip(colorName(x.name,x.category))}</td>
+  <td class="nm"><div class="nm-name">${escapeHTML(x.name)}</div><div class="nm-sub">${colorChip(colorName(x.name,x.category))}${x.team?`<span class="team-tag">${escapeHTML(x.team)}</span>`:''}</div></td>
   ${POS.map(([k,l])=>`<td><div class="pos-wrap"><input class="input count-num pos" data-change="count-row" data-pos="${k}" type="number" min="0" step="1" inputmode="numeric" aria-label="${l}" ${edit?'':'disabled'} value="${x[k]??''}"/>${edit?`<button class="calc-btn" data-act="calc-open" data-label="${escapeHTML(l)}" title="Kalkulator ${l}">🧮</button>`:''}</div></td>`).join('')}
   <td class="num total">${x.total==null?'—':n(x.total)}</td>
-  <td><input class="input noteval ${needsReason?'needs-reason':''}" data-change="count-row" maxlength="500" placeholder="${edit?'Alasan':''}" ${edit?'':'disabled'} value="${escapeHTML(x.reason||'')}"/></td>
-  <td class="status-cell">${statusCell(x.status,x.reason)}</td></tr>`;
+  <td><input class="input noteval ${needsReason?'needs-reason':''}" data-change="count-row" maxlength="500" placeholder="Alasan (wajib jika selisih)" ${edit?'':'disabled'} value="${escapeHTML(x.reason||'')}"/></td>
+  <td class="st-cell">${statusCell(x.status,x.reason)}</td></tr>`;
 }
 CHG['count-team']=async el=>{const q=state.count;q.team=el.value;q.offset=0;await loadCount()};
 CHG['count-filter-chg']=async el=>{const q=state.count;q.filter=el.value;q.offset=0;await loadCount()};
@@ -835,7 +838,6 @@ async function saveCountPage(){
  await rpc('save_counts',{p_cycle:d.cycle_id,p_rows:rows.map(v=>({sku:v.sku,display:v.display,reject:v.reject,rak_utama:v.rak_utama,rak_cadangan:v.rak_cadangan,reason:v.reason}))});
  clearCountDraft(d.cycle_id,rows.map(v=>v.sku));return rows.length;
 }
-ACT['count-save']=async()=>{const k=await saveCountPage();toast(`Tersimpan ${n(k)} SKU.`);await loadCount()};
 ACT['count-submit']=async()=>{
  await saveCountPage();const cid=state.count.data.cycle_id;
  const [all,pend]=await Promise.all([rpc('count_page',{p_cycle:cid,p_offset:0,p_limit:1,p_search:'',p_filter:'ALL'}),rpc('count_page',{p_cycle:cid,p_offset:0,p_limit:1,p_search:'',p_filter:'PENDING'})]);
@@ -947,17 +949,14 @@ async function loadValidation(){
  const acc=complete?tally/complete:null;
  const mini=(cls,l,val,sub)=>`<div class="mini ${cls}"><small>${l}</small><b>${val}</b><span>${sub||''}</span></div>`;
  const editable=st==='SUBMITTED';
- const rowHTML=x=>`<tr data-sku="${escapeHTML(x.sku)}">
-   <td class="sku-cell"><strong class="mono">${escapeHTML(x.sku)}</strong><div class="nm-name small">${escapeHTML(x.name)}</div>${colorChip(colorName(x.name,x.category))}${x.team?`<small class="muted">${escapeHTML(x.team)}</small>`:''}</td>
+ const rowHTML=x=>{const reason=x.spv_note||x.store_note||'';const delta=x.delta==null?'—':signed(x.delta);return `<tr data-sku="${escapeHTML(x.sku)}">
+   <td class="nm"><div class="nm-name">${escapeHTML(x.name)}</div><div class="nm-sub">${colorChip(colorName(x.name,x.category))}${x.team?`<span class="team-tag">${escapeHTML(x.team)}</span>`:''}</div></td>
    <td class="num sys-cell">${n(x.system)}</td>
    ${POS.map(([k])=>`<td class="num">${x[k]==null?'—':n(x[k])}</td>`).join('')}
    <td class="num"><b>${x.total==null?'—':n(x.total)}</b></td>
-   <td>${statusCell(x.status,x.store_note)}<br><span class="num small">${x.delta==null?'—':signed(x.delta)}</span></td>
-   <td class="small">${escapeHTML(x.store_note||'')}</td>
-   <td><div class="qty-wrap"><input class="input count-num spvqty" type="number" min="0" step="1" value="${x.validated_qty??''}" ${editable?'':'disabled'}/>${editable?`<button class="calc-btn" data-act="calc-open" data-label="SPV Qty">🧮</button>`:''}</div></td>
-   <td><input class="input spvnote" maxlength="500" value="${escapeHTML(x.spv_note||'')}" ${editable?'':'disabled'}/></td>
-   <td>${editable?btn('Simpan','val-save-line','outline'):''}</td></tr>`;
- const cnt=v.filter==='ALL'?sum.total_skus:sum.variance_skus;
+   <td class="st-cell">${statusCell(x.status,reason)}<span class="delta num">${delta}</span></td>
+   <td><input class="input reason-in" data-change="val-field" data-f="reason" maxlength="500" placeholder="Alasan" value="${escapeHTML(reason)}" ${editable?'':'disabled'}/></td>
+   <td><div class="qty-wrap"><input class="input count-num spvqty" data-change="val-field" data-f="qty" type="number" min="0" step="1" inputmode="numeric" value="${x.validated_qty??''}" ${editable?'':'disabled'}/>${editable?'<button class="calc-btn" data-act="calc-open" data-label="SPV Qty">🧮</button>':''}</div></td></tr>`};
  $('#content').innerHTML=`<div class="crumb"><button class="btn ghost" data-act="val-back">← Daftar SO</button><span class="muted small">${escapeHTML(labelStore(state.store)||'')}</span></div>
  <div class="mini-row">${mini('','Total SKU',n(sum.total_skus),'Seluruh SKU pada SO')}${mini('o','Variance',n(variance),'SKU selisih')}${mini('g','SKU Accuracy',P(acc),'tally / (tally + variance)')}${mini('a','Belum Lengkap',n(sum.missing_skus),'Posisi belum lengkap')}${mini('r','Blokir Approve',n(sum.blocking_skus),'Approve diblokir bila > 0')}</div>
  ${(sum.blocking_skus||0)>0?`<div class="note warning">${n(sum.blocking_skus)} SKU belum lengkap atau selisih belum beralasan. Approve diblokir sampai diperbaiki.</div>`:''}
@@ -969,22 +968,25 @@ async function loadValidation(){
     <button class="${v.filter==='VARIANCE'?'on':''}" data-act="val-filter" data-v="VARIANCE">Variance (${n(sum.variance_skus)})</button>
     <button class="${v.filter==='ALL'?'on':''}" data-act="val-filter" data-v="ALL">Semua (${n(sum.total_skus)})</button>
    </div>
-   <input id="valSearch" class="input grow" placeholder="Cari SKU / nama" value="${escapeHTML(v.search)}"/>${btn('Cari','val-find','outline')}</div>
-  <div class="tablewrap"><table id="valTable" class="val-table"><thead><tr><th>SKU / Item & Warna</th><th class="num">System</th>${POS.map(([,l])=>`<th class="num">${l}</th>`).join('')}<th class="num">Total Store</th><th>Status</th><th>Alasan Store</th><th>SPV Qty</th><th>Alasan SPV</th><th>Aksi</th></tr></thead><tbody>${data.items.map(rowHTML).join('')||'<tr><td colspan="11" class="empty">Tidak ada SKU.</td></tr>'}</tbody></table></div>
-  <div class="pager"><span class="small muted">${n(data.total_filtered?v.offset+1:0)}–${n(Math.min(v.offset+50,data.total_filtered))} / ${n(data.total_filtered)} SKU${cnt!==undefined?'':''}</span><div class="row">${btn('← Sebelumnya','val-prev','outline')}${btn('Berikutnya →','val-next','outline')}</div></div>
-  <div class="note">Untuk SKU SELISIH, wajib ada alasan dari Store atau SPV sebelum Approve. Jika SPV Qty kosong, sistem memakai total fisik Store.</div>
+   <input id="valSearch" class="input grow" placeholder="Cari item / nama" value="${escapeHTML(v.search)}"/>${btn('Cari','val-find','outline')}${(v.search||v.filter!=='VARIANCE')?'<button class="btn ghost sm" data-act="val-clear">✕ Clear</button>':''}</div>
+  <div class="tablewrap"><table id="valTable" class="val-table"><thead><tr><th>Item & Warna</th><th class="num">System</th>${POS.map(([,l])=>`<th class="num">${l}</th>`).join('')}<th class="num">Total Store</th><th>Status</th><th>Alasan</th><th>SPV Qty</th></tr></thead><tbody>${data.items.map(rowHTML).join('')||'<tr><td colspan="10" class="empty">Tidak ada SKU.</td></tr>'}</tbody></table></div>
+  <div class="pager"><span class="small muted">${n(data.total_filtered?v.offset+1:0)}–${n(Math.min(v.offset+50,data.total_filtered))} / ${n(data.total_filtered)} SKU</span><div class="row">${btn('← Sebelumnya','val-prev','outline')}${btn('Berikutnya →','val-next','outline')}</div></div>
+  <div class="footerhint">Alasan dan SPV Qty tersimpan otomatis saat diubah. Untuk SKU selisih, alasan wajib diisi sebelum Approve. Jika SPV Qty kosong, sistem memakai total fisik Store.</div>
  </div>`;
 }
+ACT['val-clear']=async()=>{const v=state.validation;v.search='';v.filter='VARIANCE';v.offset=0;await loadValidation()};
+CHG['val-field']=async el=>{
+ const tr=el.closest('tr[data-sku]');const v=state.validation;if(!tr||!v.data)return;
+ const q=tr.querySelector('.spvqty').value,note=tr.querySelector('.reason-in').value.trim();
+ if(q!==''&&!/^\d+$/.test(q))throw Error('Qty harus bilangan bulat >=0.');
+ tr.classList.add('row-saving');
+ try{await rpc('validate_line',{p_cycle:v.data.cycle_id,p_sku:tr.dataset.sku,p_qty:q===''?null:Number(q),p_note:note});toast('Tersimpan: '+tr.dataset.sku)}
+ finally{tr.classList.remove('row-saving')}
+};
 ACT['val-filter']=async el=>{const v=state.validation;v.filter=el.dataset.v;v.offset=0;await loadValidation()};
 ACT['val-find']=async()=>{const v=state.validation;v.search=$('#valSearch').value.trim();v.offset=0;await loadValidation()};
 ACT['val-prev']=async()=>{const v=state.validation;v.offset=Math.max(0,v.offset-50);await loadValidation()};
 ACT['val-next']=async()=>{const v=state.validation;if(!v.data||v.offset+50>=v.data.total_filtered)return;v.offset+=50;await loadValidation()};
-ACT['val-save-line']=async el=>{
- const v=state.validation;const tr=el.closest('tr');const val=tr.querySelector('.spvqty').value,note=tr.querySelector('.spvnote').value;
- if(val!==''&&!/^\d+$/.test(val))throw Error('Qty harus bilangan bulat >=0.');
- await rpc('validate_line',{p_cycle:v.data.cycle_id,p_sku:tr.dataset.sku,p_qty:val===''?null:Number(val),p_note:note});
- toast('Validasi SKU '+tr.dataset.sku+' tersimpan.');await loadValidation();
-};
 ACT['val-approve']=async()=>{const v=state.validation;if(!confirm('Approve SO? Setelah disetujui, hasil akan dikunci.'))return;await rpc('approve',{p_cycle:v.data.cycle_id});toast('SO berhasil APPROVED');await refreshDashboard();await loadValidation()};
 ACT['val-recount']=async()=>{const v=state.validation;const reason=prompt('Alasan Recount (minimal 5 karakter):');if(reason===null)return;await rpc('recount',{p_cycle:v.data.cycle_id,p_reason:reason});toast('SO dikembalikan untuk recount');await refreshDashboard();await loadValidation()};
 ACT['val-export']=async()=>{const v=state.validation;const k=await exportCombined([{id:v.data.cycle_id,no:'SO',store:labelStore(state.store),date:'',type:''}]);toast(`CSV diunduh: ${n(k)} SKU`)};
