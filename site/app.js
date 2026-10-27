@@ -642,7 +642,8 @@ ACT['b-sku-del']=async el=>{const b=state.builder;if(!b)return;b.scope.skus.dele
 CHG['b-search']=async el=>{
  const b=state.builder;if(!b)return;b.skuQ=el.value.trim();
  const d=await rpc('sku_coverage',{p_store:b.store,p_filter:'ALL',p_search:b.skuQ,p_offset:0,p_limit:50});
- $('#bSkuList').innerHTML=(d.items||[]).map(x=>{const sel=b.scope.skus.has(x.sku);const dis=!x.eligible&&!sel;
+ const box=$('#bSkuList');if(!box||state.builder!==b)return;
+ box.innerHTML=(d.items||[]).map(x=>{const sel=b.scope.skus.has(x.sku);const dis=!x.eligible&&!sel;
    return `<label class="sku-row ${dis?'locked':''}"><input type="checkbox" data-change="b-sku" value="${escapeHTML(x.sku)}" ${sel?'checked':''} ${dis?'disabled':''}/><span class="mono">${escapeHTML(x.sku)}</span><small>${escapeHTML(x.name)}</small><span class="ratio ${x.ratio?'r1':'r0'}">${n(x.ratio)}x</span><em>${dis?'Terkunci':'Bisa'}</em></label>`}).join('')||'<div class="empty small">Tidak ada SKU yang cocok.</div>';
 };
 CHG['b-team-name']=el=>{const b=state.builder;const t=b&&b.teams[Number(el.dataset.idx)];if(!t)return;t.name=el.value;schedulePreview()};
@@ -1093,8 +1094,8 @@ CHG['up-store']=async el=>{state.store=el.value;await refreshDashboard();await r
 CHG['file-pick']=async el=>{
  try{const file=el.files[0];if(!file)return;if(file.size>3*1024*1024)throw Error('File >3MB. Pecah atau rapikan file sebelum upload.');
   upRows=importRows(await file.text());renderRetailPreview(upRows);
-  $('#fileInfo').textContent=`Siap upload: ${n(upRows.length)} SKU; contoh SKU ${upRows[0]?.sku}${upRows.skipped?`; ${n(upRows.skipped)} baris Ending negatif dilewati`:''}`;
- }catch(ex){upRows=[];$('#retailPreview').innerHTML='';$('#fileInfo').textContent=ex.message;toast(ex.message,true)}
+  if($('#fileInfo'))$('#fileInfo').textContent=`Siap upload: ${n(upRows.length)} SKU; contoh SKU ${upRows[0]?.sku}${upRows.skipped?`; ${n(upRows.skipped)} baris Ending negatif dilewati`:''}`;
+ }catch(ex){upRows=[];if($('#retailPreview'))$('#retailPreview').innerHTML='';if($('#fileInfo'))$('#fileInfo').textContent=ex.message;toast(ex.message,true)}
 };
 ACT['do-upload']=async()=>{
  if(!upRows.length)throw Error('Pilih CSV valid terlebih dahulu.');
