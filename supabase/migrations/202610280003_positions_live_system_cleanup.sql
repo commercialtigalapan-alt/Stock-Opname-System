@@ -10,12 +10,21 @@ alter table public.tsi_so_lines
  add column if not exists pos_rak_cadangan bigint;
 
 -- Salin data lama (Gudang -> Rak Utama, Display -> Display). Baris yang lengkap diberi Reject & Rak Cadangan 0.
-update public.tsi_so_lines set
- pos_display=display_qty,
- pos_rak_utama=warehouse_qty,
- pos_reject=case when warehouse_qty is not null and display_qty is not null then 0 end,
- pos_rak_cadangan=case when warehouse_qty is not null and display_qty is not null then 0 end
-where pos_display is null and pos_rak_utama is null and (warehouse_qty is not null or display_qty is not null);
+-- Hanya dijalankan bila kolom lama masih ada (database yang sudah membersihkan kolom lama dilewati).
+do $backfill$
+begin
+ if exists (select 1 from information_schema.columns where table_schema='public' and table_name='tsi_so_lines' and column_name='warehouse_qty')
+  and exists (select 1 from information_schema.columns where table_schema='public' and table_name='tsi_so_lines' and column_name='display_qty') then
+  execute $q$
+   update public.tsi_so_lines set
+    pos_display=display_qty,
+    pos_rak_utama=warehouse_qty,
+    pos_reject=case when warehouse_qty is not null and display_qty is not null then 0 end,
+    pos_rak_cadangan=case when warehouse_qty is not null and display_qty is not null then 0 end
+   where pos_display is null and pos_rak_utama is null and (warehouse_qty is not null or display_qty is not null)
+  $q$;
+ end if;
+end $backfill$;
 
 -- 2) Total fisik: hanya valid bila keempat posisi sudah diisi (0 tetap dihitung)
 create or replace function public.tsi_so_actual(l public.tsi_so_lines)
