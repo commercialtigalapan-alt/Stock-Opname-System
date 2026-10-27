@@ -11,7 +11,7 @@ const state={me:null,stores:[],dashboard:[],page:'dashboard',store:'',online:tru
  exp:{store:'',range:null,rows:[],sel:new Set()},
  count:{offset:0,search:'',filter:'ALL',team:'',data:null,open:false,sel:new Set(),listQ:'',rows:[]},
  validation:{offset:0,search:'',filter:'VARIANCE',status:'ALL',data:null,open:false,cycle:'',listQ:'',rows:[]},
- builder:null};
+ builder:null,cov:{store:'',filter:'ALL',search:'',offset:0,data:null}};
 let upRows=[];
 let inflight=0;
 let calc=null;
@@ -183,6 +183,7 @@ const PAGE={
  dashboard:['Dashboard','Ringkasan operasional Stock Opname'],
  schedule:['SO Schedule','Jadwal Partial dan Grand Stock Opname per toko'],
  count:['SO Counting','Hitung stok per posisi di desktop, tablet, atau smartphone'],
+ coverage:['Cakupan SKU','Setiap SKU wajib ter-SO sebelum boleh di-SO lagi dalam periode ini'],
  validation:['Validasi SPV','Review hasil counting toko, validasi selisih, lalu approve SO'],
  export:['Export & Pembersihan','Export hasil SO APPROVED ke CSV, lalu bersihkan detail dari database'],
  upload:['Upload Inventory','Ganti inventory aktif toko. System qty SO yang berjalan ikut diperbarui'],
@@ -192,6 +193,7 @@ function menu(){const p=state.me.role;return [
  ['dashboard','Dashboard','⌂','MAIN'],
  ['schedule','SO Schedule','▦','STOCK OPNAME'],
  ['count','Counting','☑','STOCK OPNAME'],
+ ['coverage','Cakupan SKU','◎','STOCK OPNAME'],
  ...(p!=='store'?[['validation','Validasi SPV','✓','STOCK OPNAME']]:[]),
  ...(p!=='store'?[['export','Export & Pembersihan','⤓','REPORT & SETTINGS']]:[]),
  ['upload','Upload Inventory','⇧','INVENTORY & PLANNING'],
@@ -232,6 +234,7 @@ async function render(){
   if(state.page==='dashboard')await showDashboard();
   if(state.page==='schedule')await showSchedule();
   if(state.page==='count')await showCount();
+  if(state.page==='coverage')await showCoverage();
   if(state.page==='validation')await showValidation();
   if(state.page==='export')await showExport();
   if(state.page==='upload')await showUpload();
@@ -498,7 +501,8 @@ function openBuilder(type,cycle){
 }
 function closeBuilder(){document.getElementById('builder')?.remove();state.builder=null}
 ACT['b-close']=()=>closeBuilder();
-ACT['b-type']=async el=>{const b=state.builder;if(!b)return;b.type=el.dataset.v;if(b.type==='PARTIAL'&&b.scopeMode==='ALL')b.scopeMode='SCOPE';await renderScope()};
+ACT['b-type']=async el=>{const b=state.builder;if(!b)return;b.type=el.dataset.v;if(b.type==='PARTIAL'&&b.scopeMode==='ALL')b.scopeMode='SCOPE';
+ $$('#bCol [data-act="b-type"]').forEach(x=>x.classList.toggle('on',x.dataset.v===b.type));await renderScope()};
 ACT['b-mode']=async el=>{const b=state.builder;if(!b)return;b.scopeMode=el.dataset.v;if(b.scopeMode==='TEAMS'&&!b.teams.length)b.teams.push({name:'POS 1',scope:newScope()});await renderScope()};
 CHG['b-store']=async el=>{const b=state.builder;if(!b)return;b.store=el.value;b.scope=newScope();b.teams=[];b.stats=new Map();b.catList=null;await renderScope()};
 CHG['b-field']=()=>schedulePreview();
@@ -520,7 +524,11 @@ function colorPanelHTML(owner,cat,set,list){
  const count=set?set.size:0;
  const head=`<div class="cp-head"><span class="small"><b>Warna ${escapeHTML(cat)}</b> — ${n(count)} dari ${n(list.length)} dipilih</span>
   <span class="cp-actions"><button class="link-btn" data-act="b-color-all" data-owner="${escapeHTML(owner)}" data-cat="${escapeHTML(cat)}">Pilih semua</button><button class="link-btn muted-link" data-act="b-color-clear" data-owner="${escapeHTML(owner)}" data-cat="${escapeHTML(cat)}">Kosongkan</button></span></div>`;
- return `<div class="color-panel">${head}<div class="crow-grid">${list.map(x=>{const checked=!!set&&set.has(x.color);const st=colorStyle(x.color);return `<label class="crow ${checked?'on':''} ${isDarkHex(colorHex(x.color))?'dk':''}" style="${isDarkHex(colorHex(x.color))?`background:${colorHex(x.color)};border-color:${colorHex(x.color)}`:`background:linear-gradient(90deg,${colorHex(x.color)}40,${colorHex(x.color)}14);border-color:${colorHex(x.color)}88`}"><input type="checkbox" data-change="b-color" data-owner="${escapeHTML(owner)}" data-cat="${escapeHTML(cat)}" value="${escapeHTML(x.color)}" ${checked?'checked':''}/><span class="cname">${escapeHTML(x.color)}</span><small>${n(x.sku_count)} SKU</small><em>${x.so_count?n(x.so_count)+'x SO':'Belum pernah SO'}${x.last_date?' · '+fmtShort(x.last_date):''}</em></label>`}).join('')}</div></div>`;
+ return `<div class="color-panel">${head}<div class="crow-grid">${list.map(x=>{
+   const checked=!!set&&set.has(x.color);const hex=colorHex(x.color);const dk=isDarkHex(hex);
+   const elig=x.eligible_count??x.sku_count;const locked=x.sku_count-elig;
+   const style=dk?`background:${hex};border-color:${hex}`:`background:linear-gradient(90deg,${hex}40,${hex}14);border-color:${hex}88`;
+   return `<label class="crow ${checked?'on':''} ${dk?'dk':''}" style="${style}"><span class="crow-top"><input type="checkbox" data-change="b-color" data-owner="${escapeHTML(owner)}" data-cat="${escapeHTML(cat)}" value="${escapeHTML(x.color)}" ${checked?'checked':''}/><span class="cname">${escapeHTML(x.color)}</span></span><span class="crow-bot"><small>${n(elig)} bisa di-SO${locked>0?` · ${n(locked)} terkunci`:''}</small><em>${x.so_count?n(x.so_count)+'x SO':'Belum SO'}</em></span></label>`}).join('')}</div></div>`;
 }
 function catBlockHTML(b,owner,cat,scope){
  const on=scope.cats.has(cat);const set=scope.cats.get(cat);const list=b.stats.get(cat);
@@ -633,8 +641,9 @@ CHG['b-sku']=el=>{const b=state.builder;if(!b)return;el.checked?b.scope.skus.add
 ACT['b-sku-del']=async el=>{const b=state.builder;if(!b)return;b.scope.skus.delete(el.dataset.sku);drawSkuChips();updateCatSummary();const cb=$$('#bSkuList input').find(x=>x.value===el.dataset.sku);if(cb)cb.checked=false;schedulePreview()};
 CHG['b-search']=async el=>{
  const b=state.builder;if(!b)return;b.skuQ=el.value.trim();
- const d=await rpc('inventory_list',{p_store:b.store,p_offset:0,p_limit:50,p_search:b.skuQ});
- $('#bSkuList').innerHTML=(d.items||[]).map(x=>`<label class="sku-row"><input type="checkbox" data-change="b-sku" value="${escapeHTML(x.sku)}" ${b.scope.skus.has(x.sku)?'checked':''}/><span class="mono">${escapeHTML(x.sku)}</span><small>${escapeHTML(x.name)}</small><em>${n(x.ending)}</em></label>`).join('')||'<div class="empty small">Tidak ada SKU yang cocok.</div>';
+ const d=await rpc('sku_coverage',{p_store:b.store,p_filter:'ALL',p_search:b.skuQ,p_offset:0,p_limit:50});
+ $('#bSkuList').innerHTML=(d.items||[]).map(x=>{const sel=b.scope.skus.has(x.sku);const dis=!x.eligible&&!sel;
+   return `<label class="sku-row ${dis?'locked':''}"><input type="checkbox" data-change="b-sku" value="${escapeHTML(x.sku)}" ${sel?'checked':''} ${dis?'disabled':''}/><span class="mono">${escapeHTML(x.sku)}</span><small>${escapeHTML(x.name)}</small><span class="ratio ${x.ratio?'r1':'r0'}">${n(x.ratio)}x</span><em>${dis?'Terkunci':'Bisa'}</em></label>`}).join('')||'<div class="empty small">Tidak ada SKU yang cocok.</div>';
 };
 CHG['b-team-name']=el=>{const b=state.builder;const t=b&&b.teams[Number(el.dataset.idx)];if(!t)return;t.name=el.value;schedulePreview()};
 ACT['b-team-add']=async()=>{const b=state.builder;if(!b)return;b.teams.push({name:'POS '+(b.teams.length+1),scope:newScope()});await renderScope()};
@@ -983,7 +992,7 @@ CHG['val-field']=async el=>{
  const q=tr.querySelector('.spvqty').value,note=tr.querySelector('.reason-in').value.trim();
  if(q!==''&&!/^\d+$/.test(q))throw Error('Qty harus bilangan bulat >=0.');
  tr.classList.add('row-saving');
- try{await rpc('validate_line',{p_cycle:v.data.cycle_id,p_sku:tr.dataset.sku,p_qty:q===''?null:Number(q),p_note:note});toast('Tersimpan: '+tr.dataset.sku)}
+ try{await rpc('validate_line',{p_cycle:v.data.cycle_id,p_sku:tr.dataset.sku,p_qty:q===''?null:Number(q),p_note:note});toast('Tersimpan: '+tr.dataset.sku);await loadValidation()}
  finally{tr.classList.remove('row-saving')}
 };
 ACT['val-filter']=async el=>{const v=state.validation;v.filter=el.dataset.v;v.offset=0;await loadValidation()};
@@ -1145,3 +1154,40 @@ async function loadAudit(){
 
 /* ---------- Mulai ---------- */
 (async()=>{const {data:{session}}=await sb.auth.getSession();if(session)await start();else loginView()})();
+
+/* ---------- Cakupan SKU: rasio SO per SKU dan status bisa dipilih / terkunci ---------- */
+async function showCoverage(){
+ const c=state.cov;
+ if(state.me.role==='store')c.store=state.me.store_code;
+ else if(!c.store)c.store=state.store||state.stores[0]?.code||'';
+ const d=await rpc('sku_coverage',{p_store:c.store,p_filter:c.filter,p_search:c.search,p_offset:c.offset,p_limit:50});c.data=d;
+ const s2=d.summary||{};const pct=s2.total?Math.round(100*s2.sudah/s2.total):0;
+ const mini=(cls,l,val,sub)=>`<div class="mini ${cls}"><small>${l}</small><b>${val}</b><span>${sub}</span></div>`;
+ const filters=[['ALL','Semua'],['BELUM','Belum di-SO'],['SUDAH','Sudah di-SO'],['DIPILIH','Bisa dipilih'],['TERKUNCI','Terkunci']];
+ $('#content').innerHTML=`<div class="card filter-card"><div class="filters">
+   ${state.me.role!=='store'?`<select class="input select" data-change="cov-store">${storeOptions(c.store,false)}</select>`:`<span class="chip blue">${escapeHTML(labelStore(c.store))}</span>`}
+   <input id="covSearch" class="input grow" placeholder="Cari SKU / nama item" value="${escapeHTML(c.search)}"/>
+   ${btn('Cari','cov-find','outline')}${(c.search||c.filter!=='ALL')?'<button class="btn ghost sm" data-act="cov-clear">✕ Clear</button>':''}
+  </div>
+  <div class="note info">Aturan: setiap SKU harus ter-SO sekali dulu. SKU yang sudah ter-SO tidak bisa dipilih sampai semua SKU lain naik ke rasio yang sama. Rasio = jumlah SO selesai yang memuat SKU itu.</div></div>
+ <div class="mini-row">
+   ${mini('','Total SKU',n(s2.total),'Seluruh SKU toko')}
+   ${mini('g','Sudah di-SO',n(s2.sudah),pct+'% dari total')}
+   ${mini('a','Belum di-SO',n(s2.belum),'Rasio 0x')}
+   ${mini('o','Bisa dipilih sekarang',n(s2.dipilih),'Rasio terendah '+n(s2.min_ratio)+'x')}
+   ${mini('r','Terkunci',n(s2.terkunci),'Menunggu SKU lain naik rasio')}
+ </div>
+ <div class="card">
+  <div class="seg">${filters.map(([v,l])=>`<button class="${c.filter===v?'on':''}" data-act="cov-filter" data-v="${v}">${l}</button>`).join('')}</div>
+  <div class="tablewrap" style="margin-top:10px"><table class="cov-table"><thead><tr><th>Item & Warna</th><th>SKU</th><th class="num">Rasio</th><th>Status</th><th>Pemilihan</th></tr></thead><tbody>
+  ${(d.items||[]).map(x=>`<tr><td class="nm">${nameBadge(x.name,x.category)}</td><td class="mono">${escapeHTML(x.sku)}</td><td class="num"><span class="ratio ${x.ratio?'r1':'r0'}">${n(x.ratio)}x</span></td><td>${x.status==='SUDAH'?chip('TALLY','SUDAH SO'):chip('BELUM','BELUM SO')}</td><td>${x.eligible?'<span class="chip blue"><i></i>Bisa dipilih</span>':'<span class="chip red"><i></i>Terkunci</span>'}</td></tr>`).join('')||'<tr><td colspan="5" class="empty">Tidak ada SKU pada filter ini.</td></tr>'}
+  </tbody></table></div>
+  <div class="pager"><span class="small muted">${n(d.total_filtered?c.offset+1:0)}–${n(Math.min(c.offset+50,d.total_filtered))} dari ${n(d.total_filtered)} SKU</span><div class="row">${btn('← Sebelumnya','cov-prev','outline')}${btn('Berikutnya →','cov-next','outline')}</div></div>
+ </div>`;
+}
+CHG['cov-store']=async el=>{const c=state.cov;c.store=el.value;c.offset=0;c.search='';await showCoverage()};
+ACT['cov-filter']=async el=>{const c=state.cov;c.filter=el.dataset.v;c.offset=0;await showCoverage()};
+ACT['cov-find']=async()=>{const c=state.cov;c.search=$('#covSearch').value.trim();c.offset=0;await showCoverage()};
+ACT['cov-clear']=async()=>{const c=state.cov;c.search='';c.filter='ALL';c.offset=0;await showCoverage()};
+ACT['cov-prev']=async()=>{const c=state.cov;c.offset=Math.max(0,c.offset-50);await showCoverage()};
+ACT['cov-next']=async()=>{const c=state.cov;if(!c.data||c.offset+50>=c.data.total_filtered)return;c.offset+=50;await showCoverage()};
