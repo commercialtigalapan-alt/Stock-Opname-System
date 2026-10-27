@@ -829,7 +829,7 @@ function rowVals(tr){
 }
 function paintRow(tr,status,total,reason){
  tr.querySelector('.total').textContent=total==null?'—':n(total);
- tr.querySelector('.status-cell').innerHTML=statusCell(status,reason);
+ const sc=tr.querySelector('.st-cell');if(sc)sc.innerHTML=statusCell(status,reason);
  tr.querySelector('.noteval').classList.toggle('needs-reason',status==='SELISIH'&&!String(reason||'').trim());
 }
 // Simpan satu baris lalu minta status-nya dari server (system tetap tidak dikirim ke Store)
