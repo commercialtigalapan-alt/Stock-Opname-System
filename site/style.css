@@ -258,3 +258,31 @@ td .input{min-height:36px;padding:6px 10px}
 /* Dropdown di toolbar tidak melebar penuh */
 .toolbar select.input,.toolbar-right select.input,.bulkbar select.input,.card-head select.input,.toolbar-right input.input{width:auto;min-width:190px}
 .toolbar-right input.input[type=month]{min-width:170px}
+
+/* ===== Builder: kategori → warna (konsisten) & pembagian tim/POS ===== */
+.swatch{display:inline-block;width:14px;height:14px;border-radius:4px;flex:0 0 14px;background:#e5e7eb}
+.cat-block{display:flex;flex-direction:column;gap:8px}
+.cat-block.open{grid-column:1/-1}
+.cat-block .cat{margin:0}
+.color-panel{background:#fffaf5;border:1px solid #fed7aa;border-radius:12px;padding:10px;display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px}
+.cp-head{grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.link-btn{background:none;border:0;color:#c2410c;font-weight:700;font-size:12px;cursor:pointer;padding:2px 4px}
+.crow{display:grid;grid-template-columns:auto 14px minmax(90px,1fr) auto;align-items:center;gap:4px 10px;padding:7px 9px;border:1px solid #e5e7eb;border-radius:10px;background:#fff;cursor:pointer}
+.crow.on{border-color:#fb923c;background:#fff7ed}
+.crow input{margin:0}
+.crow .cname{font-weight:700;font-size:13px;letter-spacing:.2px}
+.crow small{color:#6b7280;font-size:12px;justify-self:end}
+.crow em{grid-column:3 / -1;font-style:normal;font-size:11.5px;color:#9a3412}
+.team-card{border:1px solid #fed7aa;border-radius:14px;padding:12px;background:#fffdf9;display:flex;flex-direction:column;gap:10px}
+.team-head{display:flex;gap:8px;align-items:center}
+.team-head .input{flex:1}
+.team-no{width:26px;height:26px;border-radius:999px;background:#f97316;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;flex:0 0 26px}
+.team-count{font-weight:700;color:#9a3412}
+.team-summary{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.team-summary>div,.warn-line{display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:6px 10px;border-radius:8px;background:#f9fafb}
+.warn-line{background:#fef2f2;color:#991b1b}
+.chip-x{background:none;border:0;cursor:pointer;color:inherit;font-weight:800;padding:0 0 0 4px}
+.seg button.on{background:#f97316;color:#fff}
+@media (max-width:820px){.crow{grid-template-columns:auto 14px 1fr}.crow small,.crow em{grid-column:auto;justify-self:start}}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg button{flex:1 1 auto}

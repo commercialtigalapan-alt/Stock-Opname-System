@@ -3,11 +3,13 @@ import {SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY} from './config.js';
 
 const sb=createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
 const root=document.querySelector('#root');
+const SPV_AREAS=['AREA-SULSEL','AREA-SULTENG','AREA-SULBAR','AREA-KALTIM','AREA-SULUT','AREA-SULTRA'];
 const state={user:null,me:null,stores:[],dashboard:[],page:'dashboard',store:'',cycle:null,online:true,badges:{},
  dash:{tab:'kpi',store:'',type:'',period:''},
  sch:{store:'',month:'',rows:[]},
- count:{offset:0,search:'',filter:'ALL',data:null,open:false,sel:new Set(),listQ:'',rows:[]},
- validation:{offset:0,search:'',filter:'VARIANCE',acc:'ALL',status:'ALL',data:null,unlocked:false,open:false,cycle:'',listQ:'',rows:[]},
+ exp:{store:'',month:'',rows:[]},
+ count:{offset:0,search:'',filter:'ALL',team:'',data:null,open:false,sel:new Set(),listQ:'',rows:[]},
+ validation:{offset:0,search:'',filter:'VARIANCE',acc:'ALL',status:'ALL',data:null,open:false,cycle:'',listQ:'',rows:[]},
  builder:null};
 let upRows=[];
 const escapeHTML=v=>String(v??'').replace(/[&<>"']/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[x]));
@@ -48,13 +50,22 @@ async function start(){
  try{state.me=await rpc('me');state.stores=state.me.stores||[];state.store=state.me.store_code||state.stores[0]?.code||'';state.page='dashboard';await refreshDashboard();shell();await render()}catch(ex){loginView('Login berhasil, tetapi '+ex.message+' User ID: '+user.id);toast(ex.message,true)}
 }
 
-const PAGE={dashboard:['Dashboard','Ringkasan operasional Stock Opname'],schedule:['SO Schedule','Jadwal Partial dan Grand Stock Opname per toko'],count:['SO Counting','Hitung stok dengan cepat di desktop, tablet, atau smartphone'],validation:['Validasi SPV','Review hasil counting toko, validasi selisih, lalu approve SO'],upload:['Upload Inventory','Ganti inventory aktif toko dari file Inventory Summary'],admin:['Manajemen Akses','Aktivasi user, role, area SPV, PIN, dan audit aktivitas']};
+const PAGE={
+ dashboard:['Dashboard','Ringkasan operasional Stock Opname'],
+ schedule:['SO Schedule','Jadwal Partial dan Grand Stock Opname per toko'],
+ count:['SO Counting','Hitung stok dengan cepat di desktop, tablet, atau smartphone'],
+ validation:['Validasi SPV','Review hasil counting toko, validasi selisih, lalu approve SO'],
+ export:['Export Hasil SO','Export CSV hasil SO APPROVED untuk dipindah ke Drive, lalu arsipkan agar database ringan'],
+ upload:['Upload Inventory','Ganti inventory aktif toko dari file Inventory Summary'],
+ admin:['Manajemen Akses','Aktivasi user, role, dan SPV Mapping per toko serta audit aktivitas']};
+// Akses: Store = Dashboard, Schedule (lihat), Counting, Upload. SPV = semua kecuali Manajemen Akses. Admin = semua.
 function menu(){const p=state.me.role;return [
  ['dashboard','Dashboard','⌂','MAIN'],
- ...(p!=='store'?[['schedule','SO Schedule','▦','STOCK OPNAME']]:[]),
- ...(p!=='spv'?[['count','Counting','☑','STOCK OPNAME']]:[]),
+ ['schedule','SO Schedule','▦','STOCK OPNAME'],
+ ['count','Counting','☑','STOCK OPNAME'],
  ...(p!=='store'?[['validation','Validasi SPV','✓','STOCK OPNAME']]:[]),
- ...(p!=='spv'?[['upload','Upload Inventory','⇧','INVENTORY & PLANNING']]:[]),
+ ...(p!=='store'?[['export','Export Hasil SO','⤓','REPORT & SETTINGS']]:[]),
+ ['upload','Upload Inventory','⇧','INVENTORY & PLANNING'],
  ...(p==='admin'?[['admin','Manajemen Akses','⚙','REPORT & SETTINGS']]:[])]}
 function shell(){
  wrap(`<section class="app" id="app">
@@ -80,7 +91,7 @@ function updateNav(){const el=$('#nav');if(!el)return;let last='',html='';const 
   html+=`<button data-page="${id}" class="${state.page===id?'active':''}" title="${title}"><span class="ico">${icon}</span><span class="lbl">${title}</span>${cnt}</button>`;
  }
  el.innerHTML=html;
- el.querySelectorAll('[data-page]').forEach(btnEl=>btnEl.onclick=async()=>{state.page=btnEl.dataset.page;state.validation.unlocked=false;state.validation.open=false;state.count.open=false;state.count.sel=new Set();await render()});
+ el.querySelectorAll('[data-page]').forEach(btnEl=>btnEl.onclick=async()=>{state.page=btnEl.dataset.page;state.validation.open=false;state.count.open=false;state.count.sel=new Set();await render()});
 }
 async function render(){
  if(!state.me)return;
@@ -91,13 +102,13 @@ async function render(){
   if(state.page==='schedule')await showSchedule();
   if(state.page==='count')await showCount();
   if(state.page==='validation')await showValidation();
+  if(state.page==='export')await showExport();
   if(state.page==='upload')await showUpload();
   if(state.page==='admin')await showAdmin();
  }catch(ex){$('#content').innerHTML=`<div class="card"><div class="note warning">${escapeHTML(ex.message)}</div></div>`;toast(ex.message,true)}
  const pill=$('#sysPill');if(pill){pill.classList.toggle('off',!state.online);pill.lastChild.textContent=state.online?'System Online':'Koneksi terputus'}
 }
 async function loadBadges(){try{const k=await rpc('kpi',{});state.badges={schedule:k.so_scheduled+k.so_running,count:k.so_running+k.so_scheduled,validation:k.so_submitted}}catch(e){state.badges={}}}
-function selectStore(){return `<select id="storeSelect" class="input select">${state.stores.map(s=>`<option value="${escapeHTML(s.code)}" ${s.code===state.store?'selected':''}>${escapeHTML(s.name)} (${escapeHTML(s.code)})</option>`).join('')}</select>`}
 function storeOptions(sel,all){return `${all?'<option value="">Semua Store</option>':''}${state.stores.map(s=>`<option value="${escapeHTML(s.code)}" ${s.code===sel?'selected':''}>${escapeHTML(s.name)}</option>`).join('')}`}
 function current(){return state.dashboard.find(x=>x.code===state.store)||null}
 function storeCard(s){const pv=s.total?Math.round(100*s.done/s.total):0;
@@ -106,7 +117,7 @@ function storeCard(s){const pv=s.total?Math.round(100*s.done/s.total):0;
  ${s.accuracy!==null&&s.accuracy!==undefined?`<div class="sc-acc"><span>SKU ${P(s.accuracy)}</span><span>Qty ${P(s.qty_accuracy)}</span><span>Nilai ${P(s.value_accuracy)}</span></div>`:''}</div>`}
 async function refreshDashboard(){const res=await rpc('dashboard');state.dashboard=res.stores||[];state.cycle=state.dashboard.find(x=>x.code===state.store)?.cycle_id||null}
 
-// ===== Dashboard (mengikuti tampilan v164) =====
+// ===== Dashboard (mengikuti tampilan v164; SO yang sudah diarsipkan tetap dihitung dari ringkasan) =====
 const PERIOD_LABEL={'':'Semua Periode',month:'Bulan Ini',d30:'30 Hari Terakhir',d90:'90 Hari Terakhir'};
 function periodRange(p){const t=new Date();const day=86400000;
  if(p==='month')return[iso(new Date(t.getFullYear(),t.getMonth(),1)),iso(t)];
@@ -176,7 +187,7 @@ async function showDashboard(){
    <select class="input select" id="dPeriod">${Object.entries(PERIOD_LABEL).map(([v,l])=>`<option value="${v}" ${d.period===v?'selected':''}>${l}</option>`).join('')}</select>
    ${btn('Terapkan','dash-apply','primary')}${btn('Reset','dash-reset','outline')}
   </div>
-  <div class="note info">Dasar perhitungan: SO yang sudah SUBMITTED atau APPROVED. Akurasi hanya dari SO APPROVED. SO yang masih berjalan hanya tampil di kartu operasional.</div>
+  <div class="note info">Dasar perhitungan: SO yang sudah SUBMITTED atau APPROVED. Akurasi hanya dari SO APPROVED. SO yang sudah diarsipkan tetap dihitung dari ringkasannya.</div>
  </div>
  <div class="card tabs-card"><span class="tabs-lbl">ANALISA DASHBOARD</span>${tabs.map(([id,l])=>`<button class="tab ${d.tab===id?'on':''}" data-act="dash-tab" data-tab="${id}">${l}</button>`).join('')}</div>
  ${body}`;
@@ -187,14 +198,12 @@ ACT['dash-reset']=async()=>{state.dash={tab:state.dash.tab,store:'',type:'',peri
 ACT['dash-tab']=async el=>{state.dash.tab=el.dataset.tab;await showDashboard()};
 
 function parseCSV(text){
- text=text.replace(/^\uFEFF/,'');let inQuote=false,cur='',row=[],rows=[];
+ text=text.replace(/^﻿/,'');let inQuote=false,cur='',row=[],rows=[];
  for(let i=0;i<text.length;i++){const ch=text[i];if(ch==='"'){if(inQuote&&text[i+1]==='"'){cur+='"';i++}else inQuote=!inQuote}else if(!inQuote&&(ch===','||ch===';'||ch==='\t')){
-   // delimiter is detected from header first line, handled below
    cur+=ch;
  }else if(!inQuote&&(ch==='\r'||ch==='\n')){if(ch==='\r'&&text[i+1]==='\n')i++;row.push(cur);rows.push(row);row=[];cur=''}else cur+=ch;}
  if(inQuote)throw Error('Format CSV tidak valid: tanda kutip tidak tertutup.');if(cur||row.length){row.push(cur);rows.push(row)}
  if(!rows.length)throw Error('CSV kosong.');
- // Reparse using delimiter with the highest count in header, respecting quoted strings.
  const header=rows[0].join('');const counts=[',',';','\t'].map(delim=>[delim,(header.match(new RegExp(delim==='\t'?'\\t':delim,'g'))||[]).length]);counts.sort((a,b)=>b[1]-a[1]);const delim=counts[0][0];
  if(!counts[0][1])throw Error('CSV harus memiliki beberapa kolom terpisah koma / titik koma / tab.');
  let final=[],part='',cells=[],quoted=false;
@@ -211,7 +220,22 @@ function importRows(csv){const parsed=parseCSV(csv);const headers=parsed.shift()
  if(seen.has(sku))throw Error('SKU duplikat: '+sku);seen.add(sku);return{sku,name,category:cCat>=0?(v[cCat]||'').trim():'',ending:Number(ending),cost:Number(cost),retail:Number(retail)};});out.skipped=parsed.length-body.length;return out;
 }
 
-// ===== SO Schedule (folder per toko, aksi Proses / Edit / Hapus) =====
+// ===== Warna konsisten (nama warna dari teks sebelum ukuran, mis. "ABU MUDA 24S PDK 2XL" -> ABU MUDA) =====
+const COLOR_MAP={
+ 'HITAM':['#111827','#ffffff'],'PUTIH':['#ffffff','#111827',1],'NAVY':['#1e3a8a','#ffffff'],'MAROON':['#7f1d1d','#ffffff'],
+ 'BURGUNDY':['#800020','#ffffff'],'CREAM':['#f3e3bf','#111827'],'HIJAU':['#16a34a','#ffffff'],'SKY BLUE':['#7dd3fc','#0c4a6e'],
+ 'TOSCA':['#14b8a6','#ffffff'],'TURKIS':['#06b6d4','#ffffff'],'BENHUR':['#2563eb','#ffffff'],'COKLAT TUA':['#6b3f24','#ffffff'],
+ 'MERAH CABE':['#dc2626','#ffffff'],'STEEL BLUE':['#4b6584','#ffffff'],'ORANGE BATA':['#c2410c','#ffffff'],'ABU TUA':['#4b5563','#ffffff'],
+ 'ABU MUDA':['#d1d5db','#111827',1],'TANPA WARNA':['#f3f4f6','#6b7280',1]};
+function colorStyle(name){
+ const key=String(name||'').toUpperCase().trim();const c=COLOR_MAP[key];
+ if(c)return{bg:c[0],fg:c[1],ring:!!c[2]};
+ let h=0;for(const ch of key)h=(h*31+ch.charCodeAt(0))>>>0;
+ return{bg:`hsl(${h%360} 60% 50%)`,fg:'#ffffff',ring:false};
+}
+const swatchStyle=st=>`background:${st.bg};color:${st.fg};${st.ring?'box-shadow:inset 0 0 0 1.5px #94a3b8;':''}`;
+
+// ===== SO Schedule (folder per toko; semua peran melihat, Admin/SPV mengelola) =====
 function assignNo(rows){
  const cnt={};
  rows.slice().sort((a,b)=>(a.planned_date||'').localeCompare(b.planned_date||'')||(a.started_at||'').localeCompare(b.started_at||'')).forEach(r=>{
@@ -223,7 +247,7 @@ function assignNo(rows){
 function schActions(r){
  const a=[],mgr=canManage();
  if(r.status==='SCHEDULED'){
-  if(isAdmin())a.push(btn('▶ Proses','sch-start','primary',{store:r.store_code}));
+  a.push(btn('▶ Proses','sch-start','primary',{store:r.store_code}));
   if(mgr)a.push(btn('✎ Edit','sch-edit','outline',{id:r.id}));
   if(mgr)a.push(btn('Hapus','sch-del','danger',{id:r.id}));
  }else if(r.status==='COUNTING'||r.status==='RECOUNT'){
@@ -252,17 +276,17 @@ async function showSchedule(){
   <div class="pills"><span class="pill-stat">Belum Selesai · ${n(open)}</span><span class="pill-stat ok">Selesai Periode · ${n(doneM)}</span></div>
   <div class="toolbar-right"><select class="input select" id="schStoreSel" data-change="sch-filter">${storeOptions(sc.store,true)}</select><input class="input" type="month" id="schMonth" value="${month}" data-change="sch-filter"/>
    ${canManage()?btn('+ Partial SO','b-open','outline',{type:'PARTIAL'})+btn('+ Grand SO','b-open','primary',{type:'GRAND'}):''}</div></div>
- <div class="note info">Folder per store berisi SO yang masih perlu diproses. SO yang sudah APPROVED tampil pada bulan yang dipilih.</div>
+ <div class="note info">${canManage()?'Folder per store berisi SO yang masih perlu diproses. SO yang sudah APPROVED tampil pada bulan yang dipilih.':'Tampilan Store: jadwal SO toko Anda (hanya lihat). Klik Proses untuk memulai SO.'}</div>
  ${groups.size?[...groups.values()].map(g=>`<div class="card">
    <div class="card-head"><h3>▣ ${escapeHTML(g.name)}</h3><span class="muted small">${n(g.rows.length)} SO</span></div>
-   <div class="tablewrap"><table><thead><tr><th>SO</th><th>Tanggal</th><th>PIC</th><th>Status</th><th class="num">SKU</th><th>Action</th></tr></thead><tbody>${g.rows.map(r=>`<tr><td><b class="mono">${escapeHTML(r.no)}</b><br><small class="muted">${r.so_type==='PARTIAL'?'PARTIAL':'GRAND'}${r.start_time?' • '+escapeHTML(r.start_time.slice(0,5)):''}</small></td><td>${fmtDate(r.planned_date)}</td><td>${escapeHTML(r.pic||'-')}</td><td>${chip(r.status)}</td><td class="num">${n(r.scope_count)}</td><td class="actions">${schActions(r)}</td></tr>`).join('')}</tbody></table></div>
-  </div>`).join(''):'<div class="card empty">Belum ada SO pada filter ini. Klik + Partial SO atau + Grand SO untuk membuat jadwal.</div>'}`;
+   <div class="tablewrap"><table><thead><tr><th>SO</th><th>Tanggal</th><th>PIC</th><th>Status</th><th class="num">SKU</th><th>Action</th></tr></thead><tbody>${g.rows.map(r=>`<tr><td><b class="mono">${escapeHTML(r.no)}</b><br><small class="muted">${r.so_type==='PARTIAL'?'PARTIAL':'GRAND'}${r.start_time?' • '+escapeHTML(r.start_time.slice(0,5)):''}${r.scope_rule||r.team_map?' • '+(r.team_map?'per tim/POS':'scope category/warna'):''}</small></td><td>${fmtDate(r.planned_date)}</td><td>${escapeHTML(r.pic||'-')}</td><td>${chip(r.status)}</td><td class="num">${n(r.scope_count)}</td><td class="actions">${schActions(r)}</td></tr>`).join('')}</tbody></table></div>
+  </div>`).join(''):'<div class="card empty">Belum ada SO pada filter ini.'+(canManage()?' Klik + Partial SO atau + Grand SO untuk membuat jadwal.':'')+'</div>'}`;
 }
 CHG['sch-filter']=async()=>{state.sch.store=$('#schStoreSel').value;state.sch.month=$('#schMonth').value;await showSchedule()};
 ACT['sch-start']=async el=>{
  if(!confirm('Mulai SO dan kunci stok sistem awal sekarang?'))return;
  await rpc('start',{p_store:el.dataset.store});toast('SO dimulai. Lanjutkan menghitung di SO Counting.');
- state.store=el.dataset.store;state.count.open=true;state.count.offset=0;state.count.search='';state.count.filter='ALL';state.page='count';await render();
+ state.store=el.dataset.store;state.count.open=true;state.count.offset=0;state.count.search='';state.count.filter='ALL';state.count.team='';state.page='count';await render();
 };
 ACT['sch-edit']=async el=>{const r=state.sch.rows.find(x=>x.id===el.dataset.id);if(!r)throw Error('Jadwal tidak ditemukan. Muat ulang halaman.');openBuilder(null,r)};
 ACT['sch-del']=async el=>{
@@ -272,19 +296,44 @@ ACT['sch-del']=async el=>{
 };
 ACT['b-open']=async el=>openBuilder(el.dataset.type,null);
 
-// ----- Builder Partial / Grand SO (layout mengikuti v164: Jadwal & Scope | Preview) -----
+// ----- Builder Partial / Grand SO -----
+// Scope per pemilihan: cats = Map(kategori -> Set(warna)); Set kosong = seluruh warna pada kategori.
+// Mode: ALL (Grand seluruh SKU) | SCOPE (kategori/warna + SKU manual) | TEAMS (pembagian tim/POS).
+function newScope(){return{cats:new Map(),skus:new Set()}}
+function scopeFromRule(rule){
+ const s=newScope();
+ if(rule){(rule.categories||[]).forEach(c=>s.cats.set(c,new Set((rule.colors||{})[c]||[])));(rule.skus||[]).forEach(x=>s.skus.add(x))}
+ return s;
+}
+function ruleOf(scope){
+ const categories=[...scope.cats.keys()];const colors={};
+ for(const [cat,set] of scope.cats)if(set.size)colors[cat]=[...set];
+ return{categories,colors,skus:[...scope.skus]};
+}
+const isEmptyRule=r=>!r.categories.length&&!r.skus.length;
+function ownerScope(b,owner){return owner==='main'?b.scope:b.teams[Number(owner)]?.scope}
+function teamsPayload(b){return b.teams.map(t=>({name:(t.name||'').trim()||'Tim',rule:ruleOf(t.scope)}))}
 function openBuilder(type,cycle){
  const sc=state.sch;const edit=!!cycle;
- const b={mode:edit?'edit':'create',cycleId:cycle?.id||null,type:edit?cycle.so_type:(type||'GRAND'),store:edit?cycle.store_code:(sc.store||state.stores[0]?.code||''),curCount:edit?(cycle.scope_count||0):0,cats:new Set(),skus:new Set(),catList:null,timer:null};
+ const b={mode:edit?'edit':'create',cycleId:cycle?.id||null,type:edit?cycle.so_type:(type||'GRAND'),store:edit?cycle.store_code:(sc.store||state.stores[0]?.code||''),
+  scopeMode:'ALL',scope:newScope(),teams:[],stats:new Map(),catList:null,skuQ:'',timer:null};
+ if(edit){
+  b.scope=scopeFromRule(cycle.scope_rule);
+  b.teams=(cycle.team_map||[]).map(t=>({name:t.name,scope:scopeFromRule(t.rule)}));
+  b.scopeMode=b.teams.length?'TEAMS':(cycle.scope_rule?'SCOPE':'ALL');
+ }else{
+  b.scopeMode=b.type==='PARTIAL'?'SCOPE':'ALL';
+ }
+ if(b.type==='PARTIAL'&&b.scopeMode==='ALL')b.scopeMode='SCOPE';
  state.builder=b;
  const ov=document.createElement('div');ov.id='builder';ov.className='modal-bg';
  ov.innerHTML=`<div class="modal">
-  <div class="modal-head"><div><h3>${edit?'Edit Jadwal SO':'Buat Jadwal SO Baru'}</h3><p>${edit?escapeHTML(cycle.no||''):'Pilih toko, jadwal, dan scope SKU sebelum menyimpan.'}</p></div><button class="x" data-act="b-close" title="Tutup">×</button></div>
+  <div class="modal-head"><div><h3>${edit?'Edit Jadwal SO':'Buat Jadwal SO Baru'}</h3><p>${edit?escapeHTML(cycle.no||''):'Pilih toko, jadwal, dan scope SO sebelum menyimpan.'}</p></div><button class="x" data-act="b-close" title="Tutup">×</button></div>
   <div class="builder">
    <div class="bcol">
     <div class="step"><span>1</span><h4>Jadwal & Scope</h4></div>
     <label class="field">Toko *<select id="bStore" class="input" data-change="b-store" ${edit?'disabled':''}>${state.stores.map(s=>`<option value="${escapeHTML(s.code)}" ${s.code===b.store?'selected':''}>${escapeHTML(s.name)}</option>`).join('')}</select></label>
-    <div class="field"><span>Jenis SO *</span><div class="seg"><button class="${b.type==='GRAND'?'on':''}" data-act="b-type" data-v="GRAND">Grand SO (semua SKU)</button><button class="${b.type==='PARTIAL'?'on':''}" data-act="b-type" data-v="PARTIAL">Partial SO (pilih scope)</button></div></div>
+    <div class="field"><span>Jenis SO *</span><div class="seg"><button class="${b.type==='GRAND'?'on':''}" data-act="b-type" data-v="GRAND">Grand SO</button><button class="${b.type==='PARTIAL'?'on':''}" data-act="b-type" data-v="PARTIAL">Partial SO</button></div></div>
     <div class="grid3">
      <label class="field">Tanggal *<input type="date" id="bDate" class="input" value="${edit?(cycle.planned_date||''):iso(new Date(Date.now()+864e5))}" data-change="b-field"/></label>
      <label class="field">Jam mulai<input type="time" id="bStart" class="input" value="${edit?(cycle.start_time||'').slice(0,5):''}" data-change="b-field"/></label>
@@ -298,57 +347,141 @@ function openBuilder(type,cycle){
   <div class="modal-foot"><button class="btn outline" data-act="b-close">Batal</button><button class="btn primary" data-act="b-save">${edit?'Simpan Perubahan':'Create Schedule'}</button></div>
  </div>`;
  document.body.appendChild(ov);
- renderScope();
+ renderScope().catch(ex=>toast(ex.message,true));
 }
 function closeBuilder(){document.getElementById('builder')?.remove();state.builder=null}
 ACT['b-close']=()=>closeBuilder();
-ACT['b-type']=async el=>{const b=state.builder;if(!b)return;b.type=el.dataset.v;$$('#builder [data-act="b-type"]').forEach(x=>x.classList.toggle('on',x.dataset.v===b.type));await renderScope()};
-CHG['b-store']=async el=>{const b=state.builder;if(!b)return;b.store=el.value;b.cats=new Set();b.skus=new Set();b.catList=null;await renderScope()};
+ACT['b-type']=async el=>{const b=state.builder;if(!b)return;b.type=el.dataset.v;if(b.type==='PARTIAL'&&b.scopeMode==='ALL')b.scopeMode='SCOPE';await renderScope()};
+ACT['b-mode']=async el=>{const b=state.builder;if(!b)return;b.scopeMode=el.dataset.v;if(b.scopeMode==='TEAMS'&&!b.teams.length)b.teams.push({name:'POS 1',scope:newScope()});await renderScope()};
+CHG['b-store']=async el=>{const b=state.builder;if(!b)return;b.store=el.value;b.scope=newScope();b.teams=[];b.stats=new Map();b.catList=null;await renderScope()};
 CHG['b-field']=()=>schedulePreview();
-CHG['b-cat']=el=>{const b=state.builder;if(!b)return;el.checked?b.cats.add(el.value):b.cats.delete(el.value);el.closest('label').classList.toggle('on',el.checked);schedulePreview()};
-CHG['b-sku']=el=>{const b=state.builder;if(!b)return;el.checked?b.skus.add(el.value):b.skus.delete(el.value);const c=$('#bSkuCount');if(c)c.textContent=b.skus.size;schedulePreview()};
-CHG['b-search']=async el=>{
- const b=state.builder;if(!b)return;
- const d=await rpc('inventory_list',{p_store:b.store,p_offset:0,p_limit:50,p_search:el.value.trim()});
- $('#bSkuList').innerHTML=(d.items||[]).map(x=>`<label class="sku-row"><input type="checkbox" data-change="b-sku" value="${escapeHTML(x.sku)}" ${b.skus.has(x.sku)?'checked':''}/><span class="mono">${escapeHTML(x.sku)}</span><small>${escapeHTML(x.name)}</small><em>${n(x.ending)}</em></label>`).join('')||'<div class="empty small">Tidak ada SKU yang cocok.</div>';
+CHG['b-cat']=async el=>{const b=state.builder;const s=b&&ownerScope(b,el.dataset.owner);if(!s)return;el.checked?s.cats.set(el.value,new Set()):s.cats.delete(el.value);await renderScope()};
+ACT['b-color-all']=async el=>{const b=state.builder;const s=b&&ownerScope(b,el.dataset.owner);if(!s)return;s.cats.set(el.dataset.cat,new Set());await renderScope()};
+CHG['b-color']=async el=>{
+ const b=state.builder;const s=b&&ownerScope(b,el.dataset.owner);if(!s)return;
+ const cat=el.dataset.cat;const list=(b.stats.get(cat)||[]).map(x=>x.color);
+ let set=s.cats.get(cat);if(!set||set.size===0)set=new Set(list);
+ if(el.checked)set.add(el.value);else set.delete(el.value);
+ if(set.size===0){toast('Pilih minimal satu warna. Gunakan "Semua warna" untuk seluruh category.',true);await renderScope();return}
+ s.cats.set(cat,set.size>=list.length?new Set():set);
+ await renderScope();
 };
+CHG['b-sku']=el=>{const b=state.builder;if(!b)return;el.checked?b.scope.skus.add(el.value):b.scope.skus.delete(el.value);drawSkuChips();schedulePreview()};
+ACT['b-sku-del']=async el=>{const b=state.builder;if(!b)return;b.scope.skus.delete(el.dataset.sku);drawSkuChips();const cb=$$('#bSkuList input').find(x=>x.value===el.dataset.sku);if(cb)cb.checked=false;schedulePreview()};
+CHG['b-search']=async el=>{
+ const b=state.builder;if(!b)return;b.skuQ=el.value.trim();
+ const d=await rpc('inventory_list',{p_store:b.store,p_offset:0,p_limit:50,p_search:b.skuQ});
+ $('#bSkuList').innerHTML=(d.items||[]).map(x=>`<label class="sku-row"><input type="checkbox" data-change="b-sku" value="${escapeHTML(x.sku)}" ${b.scope.skus.has(x.sku)?'checked':''}/><span class="mono">${escapeHTML(x.sku)}</span><small>${escapeHTML(x.name)}</small><em>${n(x.ending)}</em></label>`).join('')||'<div class="empty small">Tidak ada SKU yang cocok.</div>';
+};
+CHG['b-team-name']=el=>{const b=state.builder;const t=b&&b.teams[Number(el.dataset.idx)];if(!t)return;t.name=el.value;schedulePreview()};
+ACT['b-team-add']=async()=>{const b=state.builder;if(!b)return;b.teams.push({name:'POS '+(b.teams.length+1),scope:newScope()});await renderScope()};
+ACT['b-team-del']=async el=>{const b=state.builder;if(!b)return;b.teams.splice(Number(el.dataset.idx),1);await renderScope()};
+
+async function ensureStats(b,cats){
+ for(const c of cats){
+  if(b.stats.has(c))continue;
+  try{b.stats.set(c,await rpc('color_stats',{p_store:b.store,p_category:c}))}catch(ex){b.stats.set(c,[]);toast(ex.message,true)}
+ }
+}
+function colorPanelHTML(owner,cat,set,list){
+ if(!list)return '<div class="color-panel small muted">Memuat warna…</div>';
+ const all=list.map(x=>x.color);const whole=!set||set.size===0;
+ if(!all.length)return '<div class="color-panel small muted">Tidak ada SKU pada category ini.</div>';
+ return `<div class="color-panel">
+   <div class="cp-head"><span class="small"><b>Warna ${escapeHTML(cat)}</b> — ${whole?'seluruh warna':n(set.size)+' dari '+n(all.length)+' warna'}</span><button class="link-btn" data-act="b-color-all" data-owner="${escapeHTML(owner)}" data-cat="${escapeHTML(cat)}">Semua warna</button></div>
+   ${list.map(x=>{const checked=whole||set.has(x.color);const st=colorStyle(x.color);return `<label class="crow ${checked?'on':''}"><input type="checkbox" data-change="b-color" data-owner="${escapeHTML(owner)}" data-cat="${escapeHTML(cat)}" value="${escapeHTML(x.color)}" ${checked?'checked':''}/><i class="swatch" style="${swatchStyle(st)}"></i><span class="cname">${escapeHTML(x.color)}</span><small>${n(x.sku_count)} SKU</small><em>${x.so_count?n(x.so_count)+'x SO':'Belum pernah SO'}${x.last_date?' · Terakhir '+fmtDate(x.last_date):''}</em></label>`}).join('')}
+ </div>`;
+}
+function catBlocksHTML(b,owner,scope){
+ if(!b.catList)return '<div class="empty small">Memuat category…</div>';
+ if(!b.catList.length)return '<div class="empty small">Belum ada category pada inventory toko ini.</div>';
+ return b.catList.map(c=>{
+  const on=scope.cats.has(c.category);const set=scope.cats.get(c.category);
+  const sub=on?(set&&set.size?n(set.size)+' warna dipilih':'seluruh warna'):n(c.count)+' SKU';
+  return `<div class="cat-block ${on?'open':''}"><label class="cat ${on?'on':''}"><input type="checkbox" data-change="b-cat" data-owner="${escapeHTML(owner)}" value="${escapeHTML(c.category)}" ${on?'checked':''}/><span><b>${escapeHTML(c.category||'(Tanpa category)')}</b><small>${sub}</small></span></label>${on?colorPanelHTML(owner,c.category,set,b.stats.get(c.category)):''}</div>`;
+ }).join('');
+}
+function teamCardsHTML(b){
+ if(!b.teams.length)return '<div class="empty small">Belum ada tim/POS. Tambahkan tim, lalu pilih category dan warna untuk tiap tim.</div>';
+ return b.teams.map((t,i)=>`<div class="team-card">
+   <div class="team-head"><span class="team-no">${i+1}</span><input class="input" value="${escapeHTML(t.name)}" maxlength="60" data-change="b-team-name" data-idx="${i}" placeholder="Nama tim / POS"/><button class="btn danger" data-act="b-team-del" data-idx="${i}">Hapus</button></div>
+   <div class="cat-grid">${catBlocksHTML(b,String(i),t.scope)}</div>
+   <div class="small muted team-count" id="tc${i}">Belum dihitung</div>
+ </div>`).join('');
+}
+function drawSkuChips(){
+ const b=state.builder;if(!b)return;
+ const box=$('#bSkuChips');if(box)box.innerHTML=[...b.scope.skus].map(s=>`<span class="sku-chip mono">${escapeHTML(s)} <button class="chip-x" data-act="b-sku-del" data-sku="${escapeHTML(s)}" title="Hapus">×</button></span>`).join('')||'<span class="small muted">Belum ada SKU manual.</span>';
+ const c=$('#bSkuCount');if(c)c.textContent=b.scope.skus.size;
+}
 async function renderScope(){
  const b=state.builder;if(!b)return;const box=$('#bScope');if(!box)return;
- if(b.type==='GRAND'){
-  box.innerHTML=`<div class="scope-box"><b>Scope: seluruh SKU inventory toko</b><p class="small muted">Stok sistem dikunci saat SO dimulai (Proses). Pilih Partial SO untuk membatasi ke category atau SKU tertentu.</p></div>`;
- }else{
-  if(!b.catList){b.catList=await rpc('categories',{p_store:b.store})}
-  if(!state.builder||state.builder!==b)return;
-  box.innerHTML=`<div class="scope-box">
-    <div class="scope-head"><b>Scope Partial</b>${b.mode==='edit'?`<span class="small muted">Scope saat ini: ${n(b.curCount)} SKU (dipertahankan bila tidak diubah)</span>`:''}</div>
-    <p class="small muted">Category yang dipilih ikut seluruhnya. Tambahkan SKU tertentu bila perlu.</p>
-    <div class="cat-grid">${b.catList.map(c=>`<label class="cat ${b.cats.has(c.category)?'on':''}"><input type="checkbox" data-change="b-cat" value="${escapeHTML(c.category)}" ${b.cats.has(c.category)?'checked':''}/><span><b>${escapeHTML(c.category||'(Tanpa category)')}</b><small>${n(c.count)} SKU</small></span></label>`).join('')||'<div class="empty small">Belum ada category.</div>'}</div>
-    <input id="bSearch" class="input" placeholder="Cari SKU / nama produk, lalu Enter" data-change="b-search"/>
+ const modes=b.type==='GRAND'?[['ALL','Seluruh SKU'],['SCOPE','Category & Warna'],['TEAMS','Bagi per Tim / POS']]:[['SCOPE','Category & Warna'],['TEAMS','Bagi per Tim / POS']];
+ if(!modes.some(m=>m[0]===b.scopeMode))b.scopeMode=modes[0][0];
+ if(!b.catList){b.catList=await rpc('categories',{p_store:b.store})}
+ if(state.builder!==b)return;
+ const cats=new Set([...b.scope.cats.keys(),...b.teams.flatMap(t=>[...t.scope.cats.keys()])]);
+ await ensureStats(b,[...cats]);
+ if(state.builder!==b)return;
+ const modeSeg=`<div class="field"><span>Cara SO *</span><div class="seg">${modes.map(([v,l])=>`<button class="${b.scopeMode===v?'on':''}" data-act="b-mode" data-v="${v}">${l}</button>`).join('')}</div></div>`;
+ let body='';
+ if(b.scopeMode==='ALL'){
+  body=`<div class="scope-box"><b>Scope: seluruh SKU inventory toko</b><p class="small muted">Stok sistem dikunci saat SO dimulai (Proses). Pilih Category & Warna atau Bagi per Tim / POS bila SO hanya sebagian.</p></div>`;
+ }else if(b.scopeMode==='SCOPE'){
+  body=`<div class="scope-box">
+    <div class="scope-head"><b>Category & Warna</b><span class="small muted">Pilih category, lalu pilih warna yang di-SO. Tanpa pilih warna, seluruh warna category ikut.</span></div>
+    <div class="cat-grid">${catBlocksHTML(b,'main',b.scope)}</div>
+    <div class="scope-head"><b>SKU manual (opsional)</b></div>
+    <div class="sku-cloud" id="bSkuChips"></div>
+    <input id="bSearch" class="input" value="${escapeHTML(b.skuQ)}" placeholder="Cari SKU / nama produk, lalu Enter" data-change="b-search"/>
     <div id="bSkuList" class="sku-list"></div>
-    <div class="small muted">SKU dipilih manual: <b id="bSkuCount">${b.skus.size}</b></div>
+    <div class="small muted">SKU manual dipilih: <b id="bSkuCount">${b.scope.skus.size}</b></div>
+   </div>`;
+ }else{
+  body=`<div class="scope-box">
+    <div class="scope-head"><b>Pembagian Tim / POS</b><span class="small muted">Setiap SKU masuk ke tim pertama yang category/warnanya cocok. SKU di luar semua tim tidak di-SO.</span></div>
+    <div class="teams">${teamCardsHTML(b)}</div>
+    <button class="btn outline" data-act="b-team-add">+ Tambah Tim / POS</button>
+    <div id="bTeamSummary" class="small muted"></div>
    </div>`;
  }
+ box.innerHTML=modeSeg+body;
+ if(b.scopeMode==='SCOPE')drawSkuChips();
  updatePreview();
 }
 function schedulePreview(){const b=state.builder;if(!b)return;clearTimeout(b.timer);b.timer=setTimeout(updatePreview,250)}
 async function updatePreview(){
  const b=state.builder;if(!b||!$('#bPreview'))return;
- const type=b.type,cats=[...b.cats],skus=[...b.skus];
  const store=$('#bStore')?.value||b.store;
  const date=$('#bDate')?.value||'',start=$('#bStart')?.value||'',end=$('#bEnd')?.value||'';
- let info={count:0,sample:[]};
+ let info={count:0,sample:[]},teamRes=null,total=null,err='';
  try{
-  if(type==='GRAND')info=await rpc('scope_preview',{p_store:store,p_type:'GRAND',p_skus:null,p_categories:null});
-  else if(cats.length||skus.length)info=await rpc('scope_preview',{p_store:store,p_type:'PARTIAL',p_skus:skus,p_categories:cats});
-  else info={count:b.mode==='edit'?b.curCount:0,sample:[]};
- }catch(ex){info={count:0,sample:[],error:ex.message}}
- if(!state.builder||state.builder!==b||!$('#bPreview'))return;
+  if(b.scopeMode==='TEAMS'){
+   teamRes=await rpc('teams_preview',{p_store:store,p_teams:teamsPayload(b)});
+   total=(await rpc('scope_preview',{p_store:store,p_type:'GRAND',p_rule:{}})).count;
+   info={count:teamRes.count,sample:[]};
+  }else if(b.scopeMode==='SCOPE'){
+   info=await rpc('scope_preview',{p_store:store,p_type:b.type,p_rule:ruleOf(b.scope)});
+  }else{
+   info=await rpc('scope_preview',{p_store:store,p_type:'GRAND',p_rule:{}});
+  }
+ }catch(ex){err=ex.message}
+ if(state.builder!==b||!$('#bPreview'))return;
+ if(teamRes&&b.teams.length){
+  teamRes.teams.forEach((t,i)=>{const el=$('#tc'+i);if(el)el.textContent=`${n(t.count)} SKU`});
+ }
+ const cats=b.scope.cats.size,colorsSel=[...b.scope.cats.values()].filter(s=>s.size).length;
+ const desc=b.scopeMode==='ALL'?'Seluruh inventory toko'
+  :b.scopeMode==='SCOPE'?`${n(cats)} category${colorsSel?` • ${n(colorsSel)} category dengan pilihan warna`:''} • ${n(b.scope.skus.size)} SKU manual`
+  :`${n(b.teams.length)} tim/POS`;
+ const uncovered=total!==null&&teamRes?Math.max(0,total-teamRes.count):null;
  $('#bPreview').innerHTML=`<div class="prev">
-   <div class="prev-stats"><div><small>Toko</small><b>${escapeHTML(labelStore(store))}</b></div><div><small>Jenis</small><b>${type==='GRAND'?'Grand SO':'Partial SO'}</b></div><div><small>Tanggal</small><b>${fmtDate(date)}</b></div><div><small>Jam</small><b>${start||'—'}${end?' – '+end:''}</b></div></div>
-   <div class="prev-big"><small>SKU dalam scope</small><b>${n(info.count)}</b><span>${type==='PARTIAL'?`${n(cats.length)} category • ${n(skus.length)} SKU manual`:'Seluruh inventory toko'}</span></div>
-   ${info.error?`<div class="note warning">${escapeHTML(info.error)}</div>`:''}
+   <div class="prev-stats"><div><small>Toko</small><b>${escapeHTML(labelStore(store))}</b></div><div><small>Jenis</small><b>${b.type==='GRAND'?'Grand SO':'Partial SO'}</b></div><div><small>Tanggal</small><b>${fmtDate(date)}</b></div><div><small>Jam</small><b>${start||'—'}${end?' – '+end:''}</b></div></div>
+   <div class="prev-big"><small>SKU yang di-SO</small><b>${n(info.count)}</b><span>${desc}</span></div>
+   ${b.scopeMode==='TEAMS'&&teamRes?`<div class="team-summary">${teamRes.teams.map(t=>`<div><span>${escapeHTML(t.name)}</span><b>${n(t.count)} SKU</b></div>`).join('')}${uncovered?`<div class="warn-line"><span>Tidak masuk tim (tidak di-SO)</span><b>${n(uncovered)} SKU</b></div>`:''}</div>`:''}
+   ${err?`<div class="note warning">${escapeHTML(err)}</div>`:''}
    ${info.sample?.length?`<div class="sku-cloud">${info.sample.map(s=>`<span class="sku-chip mono">${escapeHTML(s)}</span>`).join('')}${info.count>info.sample.length?`<span class="small muted">+${n(info.count-info.sample.length)} lainnya</span>`:''}</div>`:''}
-   ${type==='PARTIAL'&&!cats.length&&!skus.length&&b.mode==='create'?'<div class="note">Pilih minimal satu category atau SKU.</div>':''}
+   ${b.type==='PARTIAL'&&b.scopeMode==='SCOPE'&&!cats&&!b.scope.skus.size?'<div class="note">Pilih minimal satu category atau SKU.</div>':''}
    <div class="note info small">Stok sistem dikunci saat SO dimulai (Proses), bukan saat jadwal dibuat.</div>
  </div>`;
 }
@@ -356,15 +489,21 @@ ACT['b-save']=async()=>{
  const b=state.builder;if(!b)return;
  const store=$('#bStore').value,date=$('#bDate').value,start=$('#bStart').value||null,end=$('#bEnd').value||null,notes=$('#bNotes').value.trim();
  if(!date)throw Error('Tanggal jadwal wajib diisi.');
- const partialScope=b.type==='PARTIAL'&&(b.cats.size||b.skus.size);
- if(b.type==='PARTIAL'&&b.mode==='create'&&!partialScope)throw Error('Pilih minimal satu category atau SKU untuk Partial SO.');
- const p_skus=partialScope?[...b.skus]:null,p_categories=partialScope?[...b.cats]:null;
+ let p_rule={},p_teams=[];
+ if(b.scopeMode==='SCOPE'){
+  const r=ruleOf(b.scope);
+  if(isEmptyRule(r))throw Error(b.type==='PARTIAL'?'Pilih minimal satu category, warna, atau SKU untuk Partial SO.':'Pilih category/warna, atau pilih Seluruh SKU.');
+  p_rule=r;
+ }else if(b.scopeMode==='TEAMS'){
+  if(!b.teams.length)throw Error('Tambahkan minimal satu tim/POS.');
+  p_teams=teamsPayload(b);
+ }
  if(b.mode==='create'){
-  if(!confirm(`Simpan jadwal ${b.type} SO untuk ${labelStore(store)} pada ${date}?`))return;
-  const out=await rpc('schedule_create',{p_store:store,p_type:b.type,p_date:date,p_start:start,p_end:end,p_notes:notes,p_skus,p_categories});
+  if(!confirm(`Simpan jadwal ${b.type==='GRAND'?'Grand':'Partial'} SO untuk ${labelStore(store)} pada ${date}?`))return;
+  const out=await rpc('schedule_create',{p_store:store,p_type:b.type,p_date:date,p_start:start,p_end:end,p_notes:notes,p_rule,p_teams});
   toast(`Jadwal dibuat: ${n(out.scope_count)} SKU`);
  }else{
-  await rpc('schedule_update',{p_cycle:b.cycleId,p_type:b.type,p_date:date,p_start:start,p_end:end,p_notes:notes,p_skus,p_categories});
+  await rpc('schedule_update',{p_cycle:b.cycleId,p_type:b.type,p_date:date,p_start:start,p_end:end,p_notes:notes,p_rule,p_teams});
   toast('Jadwal diperbarui');
  }
  closeBuilder();await render();
@@ -391,7 +530,7 @@ function countStart(s){
 }
 ACT['start-so']=async()=>{if(!confirm('Mulai SO dan kunci stok sistem awal sekarang?'))return;await rpc('start',{p_store:state.store});toast('SO berhasil dimulai');state.count.open=true;await render()};
 ACT['count-back']=async()=>{state.count.open=false;state.count.search='';state.count.offset=0;await render()};
-ACT['count-open']=async el=>{state.store=el.dataset.store;state.count.open=true;state.count.offset=0;state.count.search='';state.count.filter='ALL';state.page='count';await render()};
+ACT['count-open']=async el=>{state.store=el.dataset.store;state.count.open=true;state.count.offset=0;state.count.search='';state.count.filter='ALL';state.count.team='';state.page='count';await render()};
 async function showCountList(){
  const c=state.count;
  const all=assignNo(await rpc('schedule_list',{p_store:null}));
@@ -407,9 +546,9 @@ async function showCountList(){
 }
 function countActions(r){
  const a=[];
- if(r.status==='SCHEDULED'){if(isAdmin())a.push(btn('▶ Proses','sch-start','primary',{store:r.store_code}))}
+ if(r.status==='SCHEDULED'){if(canManage())a.push(btn('▶ Proses','sch-start','primary',{store:r.store_code}))}
  else a.push(btn('Lanjut Counting','count-open','primary',{store:r.store_code}));
- a.push(btn('Hapus','sch-del','danger',{id:r.id}));
+ if(canManage())a.push(btn('Hapus','sch-del','danger',{id:r.id}));
  return a.join('');
 }
 function drawCountRows(){
@@ -433,19 +572,22 @@ async function loadCount(){
  const s=current();
  if(!s?.cycle_id||s.status==='SCHEDULED')return countStart(s);
  const q=state.count;
- const data=await rpc('count_page',{p_cycle:s.cycle_id,p_offset:q.offset,p_limit:50,p_search:q.search,p_filter:q.filter});q.data=data;
+ const data=await rpc('count_page',{p_cycle:s.cycle_id,p_offset:q.offset,p_limit:50,p_search:q.search,p_filter:q.filter,p_team:q.team||null});q.data=data;
  const edit=data.status==='COUNTING'||data.status==='RECOUNT';
  const back=state.me.role!=='store'?`<div class="crumb"><button class="btn ghost" data-act="count-back">← Daftar SO</button><span class="muted small">${escapeHTML(labelStore(state.store))}</span></div>`:'';
  const options=[['ALL','Semua SKU'],['PENDING','Belum Dihitung'],['DONE','Sudah Dihitung']].map(([v,l])=>`<option value="${v}" ${v===q.filter?'selected':''}>${l}</option>`).join('');
+ const teams=data.teams||[];
+ const teamSel=teams.length?`<select id="countTeam" class="input" data-change="count-team"><option value="">Semua Tim / POS</option>${teams.map(t=>`<option value="${escapeHTML(t)}" ${t===q.team?'selected':''}>${escapeHTML(t)}</option>`).join('')}</select>`:'';
  $('#content').innerHTML=`${back}<div class="card">
   <div class="card-head"><div class="row"><h3>SO Berjalan</h3>${chip(data.status)}<span class="mono muted small">${escapeHTML(data.cycle_id.slice(0,8))}</span></div>${edit?btn('Submit Counting','count-submit','dark'):''}</div>
-  <div class="toolbar"><input id="countSearch" class="input grow" placeholder="Cari SKU / nama produk" value="${escapeHTML(q.search)}"/><select id="countFilter" class="input">${options}</select>${btn('Cari','count-find','outline')}${btn('📷 Scan Barcode','scan-count','outline')}</div>
-  <div class="tablewrap"><table id="countTable"><thead><tr><th>SKU</th><th>Nama / Kategori</th><th>Gudang</th><th>Display</th><th class="num">Total Fisik</th><th>Catatan</th><th>Status</th></tr></thead><tbody>${data.items.length?data.items.map(x=>`<tr data-sku="${escapeHTML(x.sku)}"><td class="mono"><strong>${escapeHTML(x.sku)}</strong></td><td>${escapeHTML(x.name)}<br><small class="muted">${escapeHTML(x.category)}</small></td><td><input class="input count-num wh" type="number" min="0" step="1" ${edit?'':'disabled'} value="${x.warehouse??''}"/></td><td><input class="input count-num ds" type="number" min="0" step="1" ${edit?'':'disabled'} value="${x.display??''}"/></td><td class="num total">${x.warehouse==null||x.display==null?'—':n(x.warehouse+x.display)}</td><td><input class="input noteval" maxlength="500" ${edit?'':'disabled'} value="${escapeHTML(x.note)}"/></td><td>${chip(x.status)}</td></tr>`).join(''):'<tr><td colspan="7" class="empty">Tidak ada SKU</td></tr>'}</tbody></table></div>
+  <div class="toolbar"><input id="countSearch" class="input grow" placeholder="Cari SKU / nama produk" value="${escapeHTML(q.search)}"/>${teamSel}<select id="countFilter" class="input">${options}</select>${btn('Cari','count-find','outline')}${btn('📷 Scan Barcode','scan-count','outline')}</div>
+  <div class="tablewrap"><table id="countTable"><thead><tr><th>SKU</th><th>Nama / Kategori</th><th>Gudang</th><th>Display</th><th class="num">Total Fisik</th><th>Catatan</th><th>Status</th></tr></thead><tbody>${data.items.length?data.items.map(x=>`<tr data-sku="${escapeHTML(x.sku)}"><td class="mono"><strong>${escapeHTML(x.sku)}</strong></td><td>${escapeHTML(x.name)}<br><small class="muted">${escapeHTML(x.category)}${x.team?' • '+escapeHTML(x.team):''}</small></td><td><input class="input count-num wh" type="number" min="0" step="1" ${edit?'':'disabled'} value="${x.warehouse??''}"/></td><td><input class="input count-num ds" type="number" min="0" step="1" ${edit?'':'disabled'} value="${x.display??''}"/></td><td class="num total">${x.warehouse==null||x.display==null?'—':n(x.warehouse+x.display)}</td><td><input class="input noteval" maxlength="500" ${edit?'':'disabled'} value="${escapeHTML(x.note)}"/></td><td>${chip(x.status)}</td></tr>`).join(''):'<tr><td colspan="7" class="empty">Tidak ada SKU</td></tr>'}</tbody></table></div>
   <div class="pager"><span class="small muted">${n(q.offset+1)}–${n(Math.min(q.offset+50,data.total_filtered))} dari ${n(data.total_filtered)} SKU</span><div class="row">${btn('← Sebelumnya','count-prev','outline')}${btn('Berikutnya →','count-next','outline')}${edit?btn('Simpan Halaman','count-save','primary'):''}</div></div>
   <div class="footerhint">Kedua kolom Qty harus diisi, termasuk angka 0. Draft tersimpan otomatis di perangkat ini.</div>
  </div>`;
  if(edit)restoreCountDraft(data.cycle_id);
 }
+CHG['count-team']=async el=>{const q=state.count;q.team=el.value;q.offset=0;await loadCount()};
 function restoreCountDraft(cid){const dr=readCountDraft(cid);$$('#countTable tr[data-sku]').forEach(tr=>{const d=dr[tr.dataset.sku];if(!d)return;tr.querySelector('.wh').value=d.wh;tr.querySelector('.ds').value=d.ds;tr.querySelector('.noteval').value=d.note||'';tr.querySelector('.total').textContent=d.wh===''||d.ds===''?'—':n(Number(d.wh)+Number(d.ds))})}
 function countDraftSync(tr){
  const d=state.count.data;if(!tr||!d||!(d.status==='COUNTING'||d.status==='RECOUNT'))return;
@@ -472,14 +614,10 @@ ACT['count-next']=async()=>{const q=state.count;if(!q.data||q.offset+50>=q.data.
 ACT['count-find']=async()=>{const q=state.count;q.search=$('#countSearch').value.trim();q.filter=$('#countFilter').value;q.offset=0;await loadCount()};
 ACT['scan-count']=()=>openCountScanner();
 
-// ===== Validasi SPV (daftar SO + detail, PIN, approve/recount/export/arsip) =====
+// ===== Validasi SPV (tanpa PIN; akses dibatasi peran dan area SPV) =====
 function valAcc(r){const t=(r.tally||0)+(r.variance||0);return t?(r.tally||0)/t:null}
 async function showValidation(){
  const v=state.validation;
- if(!v.unlocked){
-  $('#content').innerHTML=`<div class="card pin-card"><h3>🔒 Masukkan PIN Validasi SPV</h3><p class="small muted">PIN terdiri dari 8–12 angka dan diatur Admin. Setelah 5 kesalahan, akses ditahan sementara. Akses server berlaku 15 menit.</p><label class="field">PIN VALIDASI<input id="valPin" class="input" type="password" maxlength="12" inputmode="numeric" autocomplete="off"/></label><div>${btn('Buka Validasi','unlock-spv','primary')}</div></div>`;
-  return;
- }
  if(v.open)return loadValidation();
  const all=assignNo(await rpc('schedule_list',{p_store:null}));
  v.rows=all.filter(r=>r.status==='SUBMITTED'||r.status==='APPROVED');
@@ -509,8 +647,7 @@ function drawValRows(){
 CHG['v-acc']=el=>{state.validation.acc=el.value;drawValRows()};
 CHG['v-status']=el=>{state.validation.status=el.value;drawValRows()};
 ACT['val-refresh']=async()=>{await render()};
-ACT['unlock-spv']=async()=>{const yes=await rpc('unlock',{p_pin:$('#valPin').value});if(!yes)throw Error('PIN salah atau sementara terkunci.');state.validation.unlocked=true;toast('Validasi berhasil dibuka');await render()};
-ACT['val-open']=async el=>{const v=state.validation;v.cycle=el.dataset.id;v.open=true;v.offset=0;v.search='';v.filter='VARIANCE';await render()};
+ACT['val-open']=async el=>{const v=state.validation;v.cycle=el.dataset.id;v.open=true;v.offset=0;v.search='';v.filter='VARIANCE';state.store=el.dataset.store||state.store;await render()};
 ACT['val-back']=async()=>{state.validation.open=false;state.validation.data=null;await render()};
 async function loadValidation(){
  const v=state.validation;
@@ -524,7 +661,7 @@ async function loadValidation(){
  ${(sum.blocking_skus||0)>0?`<div class="note warning">${n(sum.blocking_skus)} SKU belum lengkap atau selisih belum beralasan. Approve diblokir sampai diperbaiki.</div>`:''}
  <div class="card">
   <div class="card-head"><div class="row"><h3>Detail Validasi</h3>${chip(st)}<span class="mono muted small">${escapeHTML(String(data.cycle_id).slice(0,8))}</span></div>
-   <div class="row">${st==='SUBMITTED'?btn('Recount','val-recount','danger')+btn('Approve SO','val-approve','primary'):''}${st==='APPROVED'?btn('Export Adjustment CSV','val-export','dark')+(isAdmin()&&!data.archived?btn('Arsipkan & Hapus Detail','val-archive','danger'):''):''}</div></div>
+   <div class="row">${st==='SUBMITTED'?btn('Recount','val-recount','danger')+btn('Approve SO','val-approve','primary'):''}${st==='APPROVED'&&!data.archived?btn('Export Adjustment CSV','val-export','dark'):''}</div></div>
   <div class="toolbar"><select id="valFilter" class="input" data-change="val-filter"><option value="VARIANCE" ${v.filter==='VARIANCE'?'selected':''}>Hanya Variance</option><option value="ALL" ${v.filter==='ALL'?'selected':''}>Semua SKU</option></select><input id="valSearch" class="input grow" placeholder="Cari SKU / nama" value="${escapeHTML(v.search)}"/>${btn('Cari','val-find','outline')}</div>
   <div class="tablewrap"><table id="valTable" style="min-width:1200px"><thead><tr><th>SKU / Produk</th><th class="num">System Awal</th><th class="num">System Terbaru</th><th class="num">Gudang + Display</th><th class="num">Actual</th><th>SPV Qty</th><th>Delta</th><th>Catatan Store</th><th>Reason SPV</th><th>Aksi</th></tr></thead><tbody>${data.items.map(x=>`<tr data-sku="${escapeHTML(x.sku)}"><td><strong class="mono">${escapeHTML(x.sku)}</strong><br><small class="muted">${escapeHTML(x.name)}</small></td><td class="num">${n(x.system_at_start)}</td><td class="num">${x.latest_system==null?'—':n(x.latest_system)}</td><td class="num">${n(x.warehouse)} + ${n(x.display)}</td><td class="num">${n(x.actual)}</td><td><input class="input count-num spvqty" type="number" min="0" step="1" value="${x.validated_qty??''}" ${st!=='SUBMITTED'?'disabled':''}/></td><td>${chip(x.delta===0?'TALLY':'SELISIH')} <span class="num">${x.delta==null?'—':signed(x.delta)}</span></td><td>${escapeHTML(x.store_note)}</td><td><input class="input spvnote" maxlength="500" value="${escapeHTML(x.spv_note)}" ${st!=='SUBMITTED'?'disabled':''}/></td><td>${st==='SUBMITTED'?btn('Simpan','val-save-line','outline'):''}</td></tr>`).join('')||'<tr><td colspan="10" class="empty">Tidak ada SKU.</td></tr>'}</tbody></table></div>
   <div class="pager"><span class="small muted">${n(v.offset+1)}–${n(Math.min(v.offset+50,data.total_filtered))} / ${n(data.total_filtered)}</span><div class="row">${btn('←','val-prev','outline')}${btn('→','val-next','outline')}</div></div>
@@ -543,17 +680,34 @@ ACT['val-save-line']=async el=>{
 };
 ACT['val-approve']=async()=>{const v=state.validation;if(!confirm('Approve SO? Setelah disetujui, hasil akan dikunci.'))return;await rpc('approve',{p_cycle:v.data.cycle_id});toast('SO berhasil APPROVED');await refreshDashboard();await loadValidation()};
 ACT['val-recount']=async()=>{const v=state.validation;const reason=prompt('Alasan Recount (minimal 5 karakter):');if(reason===null)return;await rpc('recount',{p_cycle:v.data.cycle_id,p_reason:reason});toast('SO dikembalikan untuk recount');await refreshDashboard();await loadValidation()};
-ACT['val-export']=async()=>{
- const v=state.validation;const vals=await rpc('export',{p_cycle:v.data.cycle_id});if(!vals.length)throw Error('Export kosong.');
+ACT['val-export']=async()=>{await exportCycle(state.validation.data.cycle_id,labelStore(state.store))};
+
+// ===== Export Hasil SO: CSV untuk Drive + arsip (hapus detail dari database, ringkasan tetap) =====
+async function exportCycle(cid,storeName){
+ const vals=await rpc('export',{p_cycle:cid});if(!vals.length)throw Error('Export kosong.');
  const keys=['SKU','NAME_VARIANT','SYSTEM_AT_START','ACTUAL','ADJUSTMENT','UNIT_COST','REASON'];
  const text='﻿'+[keys,...vals.map(x=>keys.map(k=>x[k]))].map(row=>row.map(x=>'"'+String(x??'').replaceAll('"','""')+'"').join(',')).join('\r\n');
  const blob=new Blob([text],{type:'text/csv;charset=utf-8'});const u=URL.createObjectURL(blob),a=document.createElement('a');
- a.href=u;a.download=`SO_${(labelStore(state.store)||'SO').replace(/\s+/g,'_')}_${String(v.data.cycle_id).slice(0,8)}.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000);
-};
-ACT['val-archive']=async()=>{
- const v=state.validation;
- if(!confirm('Pastikan CSV sudah di-export dan disimpan. Detail SKU SO ini akan dihapus dari database (ringkasan tetap disimpan). Lanjutkan?'))return;
- const out=await rpc('archive_cycle',{p_cycle:v.data.cycle_id});toast(`Arsip berhasil: ${out.archived_skus} SKU`);await refreshDashboard();await loadValidation();
+ a.href=u;a.download=`SO_${String(storeName||'SO').replace(/\s+/g,'_')}_${String(cid).slice(0,8)}.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000);
+ return vals.length;
+}
+async function showExport(){
+ const x=state.exp;
+ const rows=assignNo(await rpc('schedule_list',{p_store:x.store||null})).filter(r=>r.status==='APPROVED'&&(!x.month||(r.planned_date||'').slice(0,7)===x.month));
+ x.rows=rows;
+ const open=rows.filter(r=>!r.archived).length,arch=rows.filter(r=>r.archived).length;
+ $('#content').innerHTML=`<div class="toolbar-top">
+  <div class="pills"><span class="pill-stat">Approved belum diarsipkan · ${n(open)}</span><span class="pill-stat ok">Sudah diarsipkan · ${n(arch)}</span></div>
+  <div class="toolbar-right"><select class="input select" id="expStore" data-change="exp-filter">${storeOptions(x.store,true)}</select><input class="input" type="month" id="expMonth" value="${escapeHTML(x.month)}" data-change="exp-filter" title="Kosongkan untuk semua bulan"/></div></div>
+ <div class="note info">Alur: <b>Export CSV</b> → simpan ke Drive secara manual → <b>Arsipkan & Hapus Detail</b>. Detail SKU dihapus dari database agar ringan, tetapi ringkasan selisih dan nilai tetap dipakai Dashboard.</div>
+ <div class="card"><div class="tablewrap"><table><thead><tr><th>SO</th><th>Store</th><th>Tanggal</th><th>Tipe</th><th class="num">SKU</th><th class="num">Tally</th><th class="num">Variance</th><th>Status</th><th>Action</th></tr></thead><tbody>${rows.map(r=>`<tr><td><b class="mono">${escapeHTML(r.no)}</b></td><td>${escapeHTML(r.store_name)}</td><td>${fmtDate(r.planned_date)}</td><td>${r.so_type==='PARTIAL'?'PARTIAL':'GRAND'}</td><td class="num">${n(r.scope_count)}</td><td class="num">${n(r.tally)}</td><td class="num">${n(r.variance)}</td><td>${r.archived?chip('APPROVED','Diarsipkan'):chip('APPROVED')}</td><td class="actions">${r.archived?'<small class="muted">Detail sudah dihapus; ringkasan tersimpan</small>':`${btn('⤓ Export CSV','exp-csv','dark',{id:r.id,store:r.store_name})}${canManage()?btn('Arsipkan & Hapus Detail','exp-archive','danger',{id:r.id}):''}`}</td></tr>`).join('')||'<tr><td colspan="9" class="empty">Belum ada SO APPROVED pada filter ini.</td></tr>'}</tbody></table></div></div>`;
+}
+CHG['exp-filter']=async()=>{state.exp.store=$('#expStore').value;state.exp.month=$('#expMonth').value;await showExport()};
+ACT['exp-csv']=async el=>{const k=await exportCycle(el.dataset.id,el.dataset.store);toast(`CSV diunduh: ${n(k)} SKU. Simpan ke Drive sebelum diarsipkan.`)};
+ACT['exp-archive']=async el=>{
+ if(!confirm('Pastikan CSV sudah di-export dan tersimpan di Drive. Detail SKU SO ini akan dihapus dari database (ringkasan tetap disimpan). Lanjutkan?'))return;
+ const out=await rpc('archive_cycle',{p_cycle:el.dataset.id});toast(`Arsip berhasil: ${n(out.archived_skus)} SKU`);
+ await refreshDashboard();await render();
 };
 
 // ===== Upload Inventory =====
@@ -561,7 +715,7 @@ async function showUpload(){
  const s=current();
  $('#content').innerHTML=`<div class="card">
   <div class="card-head"><div><h3>Upload Inventory</h3><p class="muted small">File CSV mengganti daftar inventory aktif toko (bukan stok awal SO yang sedang berjalan).</p></div>
-   ${isAdmin()?`<select class="input select" id="upStore" data-change="up-store">${storeOptions(state.store,false)}</select>`:`<span class="chip blue"><i></i>${escapeHTML(labelStore(state.store))}</span>`}</div>
+   ${canManage()?`<select class="input select" id="upStore" data-change="up-store">${storeOptions(state.store,false)}</select>`:`<span class="chip blue"><i></i>${escapeHTML(labelStore(state.store))}</span>`}</div>
   <div class="note warning">Angka <b>Ending</b> dapat diketahui petugas yang mengunggah; untuk blind counting sepenuhnya, pisahkan petugas upload dari penghitung. <b>Cost/HPP harus berasal dari sumber resmi</b> agar Value Accuracy valid.</div>
   <label class="dropzone"><b>⬆ Pilih File CSV Inventory Summary</b><small>Name - Variant, Category, Ending (format Inventory Summary). Kolom SKU dan Cost opsional.</small><input type="file" id="fileInput" accept=".csv,text/csv" data-change="file-pick"/></label>
   <div id="fileInfo" class="small muted">Belum ada file dipilih.</div>
@@ -587,19 +741,24 @@ ACT['do-upload']=async()=>{
  toast(`Upload berhasil: ${out.sku_count} SKU.`);upRows=[];await refreshDashboard();await render();
 };
 
-// ===== Manajemen Akses =====
+// ===== Manajemen Akses (tanpa PIN; SPV Mapping per toko) =====
 async function showAdmin(){
  if(!isAdmin())throw Error('Akses Admin saja.');
- const [registered,pending]=await Promise.all([rpc('users_list'),rpc('pending_users')]);
- const users=registered||[],unknown=pending||[];
+ const [registered,pending,mapping]=await Promise.all([rpc('users_list'),rpc('pending_users'),rpc('spv_mapping')]);
+ const users=registered||[],unknown=pending||[],map=mapping||[];
+ const spvs=users.filter(x=>x.role==='spv');
  $('#content').innerHTML=`<div class="card">
    <div class="card-head"><h3>1. Aktivasi Akun Baru</h3><span class="muted small">${n(unknown.length)} akun menunggu</span></div>
-   <p class="small muted">Akun dibuat di Supabase → Authentication → Users (email + password, centang auto confirm), atau didaftarkan sendiri oleh pengguna. Akun yang sudah pernah login tapi belum aktif muncul di sini; Admin memilih role dan toko tanpa perlu pengguna login ulang.</p>
+   <p class="small muted">Akun dibuat di Supabase → Authentication → Users (email + password, centang auto confirm), atau didaftarkan sendiri oleh pengguna. Admin memilih role dan toko tanpa perlu pengguna login ulang.</p>
    <div class="toolbar"><select class="input select grow" id="newUser"><option value="">Pilih akun belum aktif</option>${unknown.map(x=>`<option value="${escapeHTML(x.id)}">${escapeHTML(x.email)}</option>`).join('')}</select><select class="input select" id="newRole"><option value="store">STORE</option><option value="spv">SPV</option><option value="admin">ADMIN</option></select><select class="input select" id="newStore"><option value="">Pilih toko (khusus Store)</option>${state.stores.map(s=>`<option value="${escapeHTML(s.code)}">${escapeHTML(s.name)}</option>`).join('')}</select>${btn('Aktifkan User','activate-user','primary')}</div>
   </div>
   <div class="card"><div class="card-head"><h3>2. Akun Aktif</h3><span class="muted small">${n(users.length)} akun</span></div>
-   <div class="tablewrap"><table><thead><tr><th>Email</th><th>Role</th><th>Toko</th><th>Area SPV</th><th>PIN SPV/Admin</th></tr></thead><tbody>${users.map(x=>`<tr data-uid="${escapeHTML(x.id)}"><td>${escapeHTML(x.email)}<br><small class="mono muted">${escapeHTML(x.id)}</small></td><td>${chip(x.role.toUpperCase(),x.role.toUpperCase())}</td><td>${escapeHTML(x.store_code||'—')}</td><td>${escapeHTML((x.spv_stores||[]).join(', ')||'—')}</td><td>${x.role==='store'?'—':`<div class="row"><input class="input pinvalue" style="width:150px" type="password" inputmode="numeric" maxlength="12" placeholder="PIN 8–12 angka"/>${btn('Atur PIN','pin-set','outline')}</div>`}</td></tr>`).join('')||'<tr><td colspan="5" class="empty">Belum ada akun.</td></tr>'}</tbody></table></div></div>
-  <div class="card"><div class="card-head"><h3>3. Tambahkan Area SPV</h3></div><div class="toolbar"><select class="input select grow" id="spvUser"><option value="">Pilih SPV</option>${users.filter(x=>x.role==='spv').map(x=>`<option value="${escapeHTML(x.id)}">${escapeHTML(x.email)}</option>`).join('')}</select><select class="input select grow" id="spvStore">${state.stores.map(s=>`<option value="${escapeHTML(s.code)}">${escapeHTML(s.name)}</option>`).join('')}</select>${btn('Tambahkan Area','add-area','primary')}</div><p class="footerhint">Jangan membagikan akun atau PIN antarpetugas.</p></div>
+   <div class="tablewrap"><table><thead><tr><th>Email</th><th>Role</th><th>Toko</th><th>Area SPV</th></tr></thead><tbody>${users.map(x=>`<tr data-uid="${escapeHTML(x.id)}"><td>${escapeHTML(x.email)}<br><small class="mono muted">${escapeHTML(x.id)}</small></td><td>${chip(x.role.toUpperCase(),x.role.toUpperCase())}</td><td>${escapeHTML(x.store_code||'—')}</td><td>${escapeHTML((x.spv_stores||[]).map(labelStore).join(', ')||'—')}</td></tr>`).join('')||'<tr><td colspan="4" class="empty">Belum ada akun.</td></tr>'}</tbody></table></div></div>
+  <div class="card"><div class="card-head"><h3>3. SPV Mapping per Toko</h3><span class="muted small">${n(map.filter(x=>x.spv_user).length)} / ${n(map.length)} toko sudah punya SPV</span></div>
+   <p class="small muted">Pilih SPV dan area untuk tiap toko. Perubahan tersimpan otomatis. SPV hanya melihat toko yang dipetakan kepadanya.</p>
+   <div class="tablewrap"><table><thead><tr><th>Toko</th><th>Area</th><th>SPV</th></tr></thead><tbody>${map.map(x=>{const areaOpts=[...new Set([...SPV_AREAS,...(x.area?[x.area]:[])])];return `<tr><td><b>${escapeHTML(x.name)}</b><br><small class="mono muted">${escapeHTML(x.code)}</small></td>
+    <td><select class="input select" data-change="map-area" data-store="${escapeHTML(x.code)}"><option value="">— Pilih area —</option>${areaOpts.map(a=>`<option value="${escapeHTML(a)}" ${a===x.area?'selected':''}>${escapeHTML(a)}</option>`).join('')}</select></td>
+    <td><select class="input select" data-change="map-spv" data-store="${escapeHTML(x.code)}"><option value="">— Belum ada SPV —</option>${spvs.map(s=>`<option value="${escapeHTML(s.id)}" ${s.id===x.spv_user?'selected':''}>${escapeHTML(s.email)}</option>`).join('')}</select></td></tr>`}).join('')||'<tr><td colspan="3" class="empty">Belum ada toko.</td></tr>'}</tbody></table></div></div>
   <div class="card" id="auditCard"></div>`;
  loadAudit().catch(()=>{});
 }
@@ -608,8 +767,8 @@ ACT['activate-user']=async()=>{
  if(!p_user)throw Error('Pilih akun yang akan diaktifkan.');
  await rpc('assign_user',{p_user,p_role,p_store});toast('Akun aktif');await render();
 };
-ACT['pin-set']=async el=>{const tr=el.closest('tr');await rpc('set_pin',{p_user:tr.dataset.uid,p_pin:tr.querySelector('.pinvalue').value});toast('PIN SPV/Admin diperbarui');tr.querySelector('.pinvalue').value=''};
-ACT['add-area']=async()=>{const p_user=$('#spvUser').value,p_store=$('#spvStore').value;if(!p_user)throw Error('Pilih SPV.');await rpc('assign_spv_store',{p_user,p_store});toast('Area SPV ditambahkan');await render()};
+CHG['map-spv']=async el=>{await rpc('set_store_spv',{p_store:el.dataset.store,p_user:el.value||null});toast('SPV Mapping disimpan');await render()};
+CHG['map-area']=async el=>{await rpc('set_store_area',{p_store:el.dataset.store,p_area:el.value||null});toast('Area toko disimpan');await render()};
 
 // ===== Counting: draft lokal & scanner barcode =====
 function readCountDraft(cid){try{return JSON.parse(localStorage.getItem('tsiSO_draft_'+cid)||'{}')}catch(e){return{}}}
