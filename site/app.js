@@ -107,6 +107,9 @@ function colorHex(name){
 }
 function colorStyle(name){const hex=colorHex(name);const lum=luminance(hex);return{bg:hex,fg:lum>0.45?'#111827':'#ffffff',ring:lum>0.8}}
 const swatchStyle=st=>`background:${st.bg};${st.ring?'box-shadow:inset 0 0 0 1.5px #94a3b8;':''}`;
+const isDarkHex=hex=>luminance(hex)<0.3;
+const nameBadge=(name,cat)=>{const cn=colorName(name,cat);const hex=colorHex(cn);const dk=isDarkHex(hex);
+ return `<span class="nbadge-c ${dk?'dk':''}" style="${dk?`background:${hex};border-color:${hex}`:`background:linear-gradient(90deg,${hex}55,${hex}22);border-color:${hex}88`}" title="Warna: ${escapeHTML(cn)}">${escapeHTML(name)}</span>`};
 const colorChip=(name)=>{const st=colorStyle(name);return `<span class="cchip"><i style="${swatchStyle(st)}"></i>${escapeHTML(name)}</span>`};
 
 /* ---------- rentang: minggu ISO, bulan, tahun, 30/90 hari, atau tanggal sendiri ---------- */
@@ -167,7 +170,7 @@ CHG['rng']=async el=>{
 /* ---------- auth & shell ---------- */
 function loginView(message=''){
  state.me=null;
- wrap(`<section class="login-bg"><div class="login-card"><div class="brand"><div class="logo">38</div><div><strong>TIGALAPAN INDONESIA<small>STOCK OPNAME • SUPABASE</small></strong></div></div><h1>Masuk aplikasi SO</h1><p class="small muted">Masuk menggunakan akun yang telah terdaftar di Supabase Auth. Admin harus mengaktifkan role serta toko Anda.</p><form id="loginForm" class="login-form"><div class="field"><label>Email</label><input class="input" id="email" type="email" autocomplete="email" required placeholder="alamat@gmail.com"/></div><div class="field"><label>Password</label><input class="input" id="password" type="password" minlength="6" autocomplete="current-password" required placeholder="Password akun SO"/></div><div class="login-actions"><button class="btn primary" type="submit">Masuk</button><button class="btn" id="signUpBtn" type="button">Daftar akun</button></div></form><p class="footerhint">${escapeHTML(message||'Akun baru belum dapat membaca data sampai disetujui Admin.')}</p></div></section>`);
+ wrap(`<section class="login-bg"><div class="login-card"><div class="brand"><img class="logo-img" src="logo.png" alt="Tigalapan OPR Division"/><div><strong>TIGALAPAN INDONESIA<small>STOCK OPNAME • SUPABASE</small></strong></div></div><h1>Masuk aplikasi SO</h1><p class="small muted">Masuk menggunakan akun yang telah terdaftar di Supabase Auth. Admin harus mengaktifkan role serta toko Anda.</p><form id="loginForm" class="login-form"><div class="field"><label>Email</label><input class="input" id="email" type="email" autocomplete="email" required placeholder="alamat@gmail.com"/></div><div class="field"><label>Password</label><input class="input" id="password" type="password" minlength="6" autocomplete="current-password" required placeholder="Password akun SO"/></div><div class="login-actions"><button class="btn primary" type="submit">Masuk</button><button class="btn" id="signUpBtn" type="button">Daftar akun</button></div></form><p class="footerhint">${escapeHTML(message||'Akun baru belum dapat membaca data sampai disetujui Admin.')}</p></div></section>`);
  $('#loginForm').addEventListener('submit',async e=>{e.preventDefault();const email=$('#email').value.trim(),password=$('#password').value;try{const {error}=await sb.auth.signInWithPassword({email,password});if(error)throw error;await start()}catch(ex){toast(ex.message,true)}});
  $('#signUpBtn').addEventListener('click',async()=>{const email=$('#email').value.trim(),password=$('#password').value;if(!email||password.length<6){toast('Isi email dan password minimal 6 karakter.',true);return}const {error}=await sb.auth.signUp({email,password,options:{emailRedirectTo:location.href.split('?')[0]}});toast(error?error.message:'Pendaftaran diproses. Minta Admin mengaktifkan akun.',!!error)});
 }
@@ -196,7 +199,7 @@ function menu(){const p=state.me.role;return [
 function shell(){
  wrap(`<div class="progress" id="progress"><i></i></div><section class="app" id="app">
  <aside class="sidebar">
-  <div class="side-head"><div class="brand-card"><div class="logo">38</div><div class="brand-text"><strong>TIGALAPAN</strong><small>STOCK OPNAME SYSTEM</small></div></div><button class="collapse" id="collapseBtn" title="Perkecil / perbesar menu">‹</button></div>
+  <div class="side-head"><div class="brand-card"><img class="logo-img" src="logo.png" alt="Tigalapan OPR Division"/><div class="brand-text"><strong>TIGALAPAN</strong><small>STOCK OPNAME SYSTEM</small></div></div><button class="collapse" id="collapseBtn" title="Perkecil / perbesar menu">‹</button></div>
   <nav class="nav" id="nav"></nav>
   <div class="side-foot"><div class="avatar">${escapeHTML(ini(state.me.email))}</div><div class="who"><strong>${escapeHTML(state.me.email)}</strong><small>${ROLE_LABEL[state.me.role]} · ${state.me.role==='store'?escapeHTML(labelStore(state.me.store_code)):'Semua area'}</small></div></div>
  </aside>
@@ -517,7 +520,7 @@ function colorPanelHTML(owner,cat,set,list){
  const count=set?set.size:0;
  const head=`<div class="cp-head"><span class="small"><b>Warna ${escapeHTML(cat)}</b> — ${n(count)} dari ${n(list.length)} dipilih</span>
   <span class="cp-actions"><button class="link-btn" data-act="b-color-all" data-owner="${escapeHTML(owner)}" data-cat="${escapeHTML(cat)}">Pilih semua</button><button class="link-btn muted-link" data-act="b-color-clear" data-owner="${escapeHTML(owner)}" data-cat="${escapeHTML(cat)}">Kosongkan</button></span></div>`;
- return `<div class="color-panel">${head}<div class="crow-grid">${list.map(x=>{const checked=!!set&&set.has(x.color);const st=colorStyle(x.color);return `<label class="crow ${checked?'on':''}"><input type="checkbox" data-change="b-color" data-owner="${escapeHTML(owner)}" data-cat="${escapeHTML(cat)}" value="${escapeHTML(x.color)}" ${checked?'checked':''}/><i class="swatch" style="${swatchStyle(st)}"></i><span class="cname">${escapeHTML(x.color)}</span><small>${n(x.sku_count)} SKU</small><em>${x.so_count?n(x.so_count)+'x SO':'Belum pernah SO'}${x.last_date?' · '+fmtShort(x.last_date):''}</em></label>`}).join('')}</div></div>`;
+ return `<div class="color-panel">${head}<div class="crow-grid">${list.map(x=>{const checked=!!set&&set.has(x.color);const st=colorStyle(x.color);return `<label class="crow ${checked?'on':''} ${isDarkHex(colorHex(x.color))?'dk':''}" style="${isDarkHex(colorHex(x.color))?`background:${colorHex(x.color)};border-color:${colorHex(x.color)}`:`background:linear-gradient(90deg,${colorHex(x.color)}40,${colorHex(x.color)}14);border-color:${colorHex(x.color)}88`}"><input type="checkbox" data-change="b-color" data-owner="${escapeHTML(owner)}" data-cat="${escapeHTML(cat)}" value="${escapeHTML(x.color)}" ${checked?'checked':''}/><span class="cname">${escapeHTML(x.color)}</span><small>${n(x.sku_count)} SKU</small><em>${x.so_count?n(x.so_count)+'x SO':'Belum pernah SO'}${x.last_date?' · '+fmtShort(x.last_date):''}</em></label>`}).join('')}</div></div>`;
 }
 function catBlockHTML(b,owner,cat,scope){
  const on=scope.cats.has(cat);const set=scope.cats.get(cat);const list=b.stats.get(cat);
@@ -783,7 +786,7 @@ function statusCell(status,reason){
 function countRowHTML(x,edit){
  const needsReason=x.status==='SELISIH'&&!(x.reason||'').trim();
  return `<tr data-sku="${escapeHTML(x.sku)}">
-  <td class="nm"><div class="nm-name">${escapeHTML(x.name)}</div><div class="nm-sub">${colorChip(colorName(x.name,x.category))}${x.team?`<span class="team-tag">${escapeHTML(x.team)}</span>`:''}</div></td>
+  <td class="nm"><div class="nm-sub">${nameBadge(x.name,x.category)}${x.team?`<span class="team-tag">${escapeHTML(x.team)}</span>`:''}</div></td>
   ${POS.map(([k,l])=>`<td><div class="pos-wrap"><input class="input count-num pos" data-change="count-row" data-pos="${k}" type="number" min="0" step="1" inputmode="numeric" aria-label="${l}" ${edit?'':'disabled'} value="${x[k]??''}"/>${edit?`<button class="calc-btn" data-act="calc-open" data-label="${escapeHTML(l)}" title="Kalkulator ${l}">🧮</button>`:''}</div></td>`).join('')}
   <td class="num total">${x.total==null?'—':n(x.total)}</td>
   <td><input class="input noteval ${needsReason?'needs-reason':''}" data-change="count-row" maxlength="500" placeholder="Alasan (wajib jika selisih)" ${edit?'':'disabled'} value="${escapeHTML(x.reason||'')}"/></td>
@@ -950,7 +953,7 @@ async function loadValidation(){
  const mini=(cls,l,val,sub)=>`<div class="mini ${cls}"><small>${l}</small><b>${val}</b><span>${sub||''}</span></div>`;
  const editable=st==='SUBMITTED';
  const rowHTML=x=>{const reason=x.spv_note||x.store_note||'';const delta=x.delta==null?'—':signed(x.delta);return `<tr data-sku="${escapeHTML(x.sku)}">
-   <td class="nm"><div class="nm-name">${escapeHTML(x.name)}</div><div class="nm-sub">${colorChip(colorName(x.name,x.category))}${x.team?`<span class="team-tag">${escapeHTML(x.team)}</span>`:''}</div></td>
+   <td class="nm"><div class="nm-sub">${nameBadge(x.name,x.category)}${x.team?`<span class="team-tag">${escapeHTML(x.team)}</span>`:''}</div></td>
    <td class="num sys-cell">${n(x.system)}</td>
    ${POS.map(([k])=>`<td class="num">${x[k]==null?'—':n(x[k])}</td>`).join('')}
    <td class="num"><b>${x.total==null?'—':n(x.total)}</b></td>
