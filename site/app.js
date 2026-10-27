@@ -9,6 +9,7 @@ const n=v=>new Intl.NumberFormat('id-ID').format(Number(v)||0);
 const fmt=v=>v===null||v===undefined?'—':new Intl.NumberFormat('id-ID',{maximumFractionDigits:1}).format(Number(v)*100)+'%';
 const money=v=>v===null||v===undefined?'—':'Rp '+n(v);
 const $=sel=>document.querySelector(sel);
+const $$=sel=>Array.from(document.querySelectorAll(sel));
 const toast=(s,isErr=false)=>{const el=$('#toast');el.textContent=s;el.className='toast'+(isErr?' error':'');setTimeout(()=>{if(el.textContent===s)el.classList.add('hidden')},5500)};
 const rpc=async(name,args={})=>{const {data,error}=await sb.rpc('tsi_so_'+name,args);if(error)throw new Error(error.message||'Terjadi kesalahan server');return data};
 const btn=(label,act,kind='')=>`<button class="btn ${kind}" data-act="${act}">${label}</button>`;
