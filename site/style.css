@@ -1027,3 +1027,6 @@ body{font-size:13.5px;background:radial-gradient(900px 420px at 100% -10%,#fde4c
  .ba-sum td,.ba-lines td,.ba-lines th{border-color:#999}
  tr{break-inside:avoid}
 }
+.ba-bulk{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:4px 0 6px}
+.ba-bulk .btn[disabled]{opacity:.45;cursor:not-allowed}
+@media print{.ba-page{break-after:page}}

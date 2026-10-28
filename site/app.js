@@ -1424,29 +1424,64 @@ function paintRowBusy(){
 }
 
 // ===== Berita Acara (BA): approval berjenjang SPV lalu Manager, checklist adjust per BA =====
-const BA_MATCH={ALL:()=>true,WAIT_SPV:x=>!x.spv_at,WAIT_MGR:x=>!!x.spv_at&&!x.mgr_at,WAIT_ADJ:x=>!!x.mgr_at&&!x.adj_at,ADJUSTED:x=>!!x.adj_at};
-const BA_LABEL=[['ALL','Semua'],['WAIT_SPV','Menunggu SPV'],['WAIT_MGR','Menunggu Manager'],['WAIT_ADJ','Belum di-adjust'],['ADJUSTED','Sudah di-adjust']];
+const BA_MATCH={ALL:()=>true,WAIT_SPV:x=>!x.spv_at,WAIT_MGR:x=>!!x.spv_at&&!x.mgr_at,WAIT_ADJ:x=>!!x.mgr_at&&!x.adj_at,ADJUSTED:x=>!!x.adj_at,NOT_EXPORTED:x=>!x.exported_at};
+const BA_LABEL=[['ALL','Semua'],['WAIT_SPV','Menunggu SPV'],['WAIT_MGR','Menunggu Manager'],['WAIT_ADJ','Belum di-adjust'],['ADJUSTED','Sudah di-adjust'],['NOT_EXPORTED','Belum diekspor']];
 const baState=()=>state.ba||(state.ba={status:'ALL',open:null,all:[]});
 const fmtDT=t=>t?new Date(t).toLocaleString('id-ID',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Makassar'})+' WITA':'—';
 async function showBA(){
  const b=baState();
  if(b.open)return loadBADetail();
  const all=await rpc('ba_list',{p_store:null,p_status:'ALL',p_limit:500});
- b.all=all;
+ b.all=all;b.sel=b.sel||new Set();
+ for(const id of [...b.sel])if(!all.some(x=>x.id===id))b.sel.delete(id);
  const rows=all.filter(BA_MATCH[b.status]||BA_MATCH.ALL);
+ const picked=all.filter(x=>b.sel.has(x.id));
+ const cleanable=picked.filter(x=>x.exported_at).length;
+ const allOn=rows.length>0&&rows.every(x=>b.sel.has(x.id));
  $('#content').innerHTML=`<div class="card">
-  <div class="card-head"><div><h3>Berita Acara SO</h3><p class="muted small">SPV menandatangani dahulu, lalu Manager menyetujui. Setelah disetujui, tandai BA jika data sudah di-adjust di sistem.</p></div><span class="chip blue"><i></i>${n(all.length)} BA</span></div>
+  <div class="card-head"><div><h3>Berita Acara SO</h3><p class="muted small">SPV menandatangani dahulu, lalu Manager menyetujui. Unduh BA gabungan untuk disimpan ke Google Drive, lalu bersihkan dari database.</p></div><span class="chip blue"><i></i>${n(all.length)} BA aktif</span></div>
   <div class="ba-tabs">${BA_LABEL.map(([k,l])=>`<button class="tab ${b.status===k?'on':''}" data-act="ba-filter" data-k="${k}">${l} <b>${n(all.filter(BA_MATCH[k]).length)}</b></button>`).join('')}</div>
-  <div class="tablewrap"><table><thead><tr><th>No BA</th><th>Toko</th><th>Dibuat</th><th>SPV</th><th>Manager</th><th>Adjust</th><th>Aksi</th></tr></thead><tbody>
+  <div class="ba-bulk no-print">
+   <span class="small muted">${n(picked.length)} BA dipilih</span>
+   <button class="btn dark" data-act="ba-export-sel" ${picked.length?'':'disabled'}>Unduh gabungan (HTML)</button>
+   <button class="btn danger" data-act="ba-clean-sel" ${cleanable?'':'disabled'}>Bersihkan dari database (${n(cleanable)})</button>
+  </div>
+  <p class="small muted no-print">Alur: pilih BA → unduh gabungan dan simpan ke Google Drive → BA otomatis ditandai sudah diekspor → baru bisa dibersihkan.</p>
+  <div class="tablewrap"><table><thead><tr><th><input type="checkbox" data-change="ba-pick-all" ${allOn?'checked':''}/></th><th>No BA</th><th>Toko</th><th>Dibuat</th><th>SPV</th><th>Manager</th><th>Adjust</th><th>Export</th><th>Aksi</th></tr></thead><tbody>
   ${rows.map(x=>`<tr>
+   <td><input type="checkbox" data-change="ba-pick" data-id="${escapeHTML(x.id)}" ${b.sel.has(x.id)?'checked':''}/></td>
    <td><b class="mono">${escapeHTML(x.ba_no)}</b></td>
    <td>${escapeHTML(x.store_name)}</td>
    <td class="small">${fmtDT(x.created_at)}</td>
    <td>${x.spv_at?`<span class="chip green"><i></i>${escapeHTML(x.spv_name)}</span>`:'<span class="chip gray"><i></i>Menunggu</span>'}</td>
    <td>${x.mgr_at?`<span class="chip green"><i></i>${escapeHTML(x.mgr_name)}</span>`:'<span class="chip gray"><i></i>Menunggu</span>'}</td>
    <td><label class="ba-adj"><input type="checkbox" data-change="ba-adj" data-id="${escapeHTML(x.id)}" ${x.adj_at?'checked':''} ${x.mgr_at?'':'disabled'}/> ${x.adj_at?`Sudah · ${escapeHTML(x.adj_name||'')}`:(x.mgr_at?'Tandai sudah':'Setelah Manager')}</label></td>
-   <td>${btn('Detail','ba-open','ghost sm',{id:x.id})}</td></tr>`).join('')||'<tr><td colspan="7" class="empty">Tidak ada BA pada filter ini.</td></tr>'}
+   <td>${x.exported_at?chip('TALLY','Sudah'):chip('SUBMITTED','Belum')}</td>
+   <td>${btn('Detail','ba-open','ghost sm',{id:x.id})}</td></tr>`).join('')||'<tr><td colspan="9" class="empty">Tidak ada BA pada filter ini.</td></tr>'}
   </tbody></table></div></div>`;
+}
+function baArticle(h,s,lines,total,full){
+ const stamp=(at,name,empty)=>at?`<b>${escapeHTML(name||'')}</b><small>Ditandatangani secara elektronik · ${fmtDT(at)}</small>`:`<i class="muted">${empty}</i>`;
+ return `<article class="ba-doc" id="${full?'':'baPrint'}">
+  <header class="ba-head"><img src="logo.png" alt=""/><div><h2>BERITA ACARA STOCK OPNAME</h2><p class="mono">${escapeHTML(h.ba_no)}</p></div></header>
+  <table class="ba-meta"><tr><td>Toko</td><td>${escapeHTML(h.store_name)} (${escapeHTML(h.store_code)})</td><td>Tanggal SO</td><td>${fmtDT(h.started_at)}</td></tr>
+  <tr><td>Dibuat oleh</td><td>${escapeHTML(h.created_name||'')}</td><td>Tanggal BA</td><td>${fmtDT(h.created_at)}</td></tr></table>
+  <p class="ba-text">Telah dilakukan stock opname pada toko tersebut, dengan hasil sebagai berikut:</p>
+  <table class="ba-sum"><tbody>
+   <tr><td>Total SKU dihitung</td><td class="num">${n(s.total_skus)}</td><td>SKU sesuai sistem</td><td class="num">${n(s.tally_count)}</td></tr>
+   <tr><td>SKU selisih</td><td class="num">${n(s.variance_count)}</td><td>Net selisih qty</td><td class="num">${signed(s.net_qty)}</td></tr>
+   <tr><td>Nilai kekurangan</td><td class="num">${rp(s.missing_value)}</td><td>Nilai kelebihan</td><td class="num">${rp(s.surplus_value)}</td></tr>
+  </tbody></table>
+  ${total?`<p class="ba-text">Daftar SKU selisih${!full&&lines.length<total?` (menampilkan ${n(lines.length)} dari ${n(total)} SKU, urut selisih terbesar; unduh untuk daftar lengkap)`:''}:</p>
+  <div class="tablewrap ba-lines"><table><thead><tr><th>SKU</th><th>Nama item</th><th class="num">System</th><th class="num">Actual</th><th class="num">Selisih</th><th class="num">Nilai selisih</th></tr></thead><tbody>
+  ${lines.map(l=>`<tr><td class="mono">${escapeHTML(l.sku)}</td><td>${escapeHTML(l.item_name)}</td><td class="num">${n(l.system_qty)}</td><td class="num">${n(l.actual_qty)}</td><td class="num">${signed(l.diff_qty)}</td><td class="num">${rp(l.diff_qty*l.unit_cost,true)}</td></tr>`).join('')}
+  </tbody></table></div>`:'<p class="ba-text">Tidak ada selisih. Seluruh SKU sesuai dengan sistem.</p>'}
+  <div class="ba-sign">
+   <div><span>SPV Toko</span><div class="ba-stamp">${stamp(h.spv_at,h.spv_name,'Belum ditandatangani')}</div></div>
+   <div><span>Manager</span><div class="ba-stamp">${stamp(h.mgr_at,h.mgr_name,'Belum disetujui')}</div></div>
+  </div>
+  ${h.adj_at?`<p class="ba-adjnote">Sudah di-adjust di sistem oleh ${escapeHTML(h.adj_name||'')} · ${fmtDT(h.adj_at)}</p>`:''}
+ </article>`;
 }
 async function loadBADetail(){
  const b=baState();
@@ -1460,42 +1495,33 @@ async function loadBADetail(){
   <div class="row"><b class="mono">${escapeHTML(h.ba_no)}</b>${h.adj_at?chip('TALLY','Sudah di-adjust'):chip('SUBMITTED',h.mgr_at?'Siap di-adjust':(h.spv_at?'Menunggu Manager':'Menunggu SPV'))}</div>
   <div class="row">${canSpv?btn('Tanda tangan SPV','ba-sign','primary',{id:h.id,level:'SPV'}):''}${canMgr?btn('Setujui Manager','ba-sign','dark',{id:h.id,level:'MGR'}):''}${btn('Unduh HTML','ba-download','ghost')}${btn('Cetak / PDF','ba-print','ghost')}</div>
  </div>
- <article class="ba-doc" id="baPrint">
-  <header class="ba-head"><img src="logo.png" alt=""/><div><h2>BERITA ACARA STOCK OPNAME</h2><p class="mono">${escapeHTML(h.ba_no)}</p></div></header>
-  <table class="ba-meta"><tr><td>Toko</td><td>${escapeHTML(h.store_name)} (${escapeHTML(h.store_code)})</td><td>Tanggal SO</td><td>${fmtDT(h.started_at)}</td></tr>
-  <tr><td>Dibuat oleh</td><td>${escapeHTML(h.created_name||'')}</td><td>Tanggal BA</td><td>${fmtDT(h.created_at)}</td></tr></table>
-  <p class="ba-text">Telah dilakukan stock opname pada toko tersebut, dengan hasil sebagai berikut:</p>
-  <table class="ba-sum"><tbody>
-   <tr><td>Total SKU dihitung</td><td class="num">${n(s.total_skus)}</td><td>SKU sesuai sistem</td><td class="num">${n(s.tally_count)}</td></tr>
-   <tr><td>SKU selisih</td><td class="num">${n(s.variance_count)}</td><td>Net selisih qty</td><td class="num">${signed(s.net_qty)}</td></tr>
-   <tr><td>Nilai kekurangan</td><td class="num">${rp(s.missing_value)}</td><td>Nilai kelebihan</td><td class="num">${rp(s.surplus_value)}</td></tr>
-  </tbody></table>
-  ${total?`<p class="ba-text">Daftar SKU selisih${lines.length<total?` (menampilkan ${n(lines.length)} dari ${n(total)} SKU, urut selisih terbesar; daftar lengkap ada di export CSV)`:''}:</p>
-  <div class="tablewrap ba-lines"><table><thead><tr><th>SKU</th><th>Nama item</th><th class="num">System</th><th class="num">Actual</th><th class="num">Selisih</th><th class="num">Nilai selisih</th></tr></thead><tbody>
-  ${lines.map(l=>`<tr><td class="mono">${escapeHTML(l.sku)}</td><td>${escapeHTML(l.item_name)}</td><td class="num">${n(l.system_qty)}</td><td class="num">${n(l.actual_qty)}</td><td class="num">${signed(l.diff_qty)}</td><td class="num">${rp(l.diff_qty*l.unit_cost,true)}</td></tr>`).join('')}
-  </tbody></table></div>`:'<p class="ba-text">Tidak ada selisih. Seluruh SKU sesuai dengan sistem.</p>'}
-  <div class="ba-sign">
-   <div><span>SPV Toko</span><div class="ba-stamp">${stamp(h.spv_at,h.spv_name,'Belum ditandatangani')}</div></div>
-   <div><span>Manager</span><div class="ba-stamp">${stamp(h.mgr_at,h.mgr_name,'Belum disetujui')}</div></div>
-  </div>
-  ${h.adj_at?`<p class="ba-adjnote">Sudah di-adjust di sistem oleh ${escapeHTML(h.adj_name||'')} · ${fmtDT(h.adj_at)}</p>`:''}
- </article>`;
+ ${baArticle(h,s,lines,total,false)}`;
 }
 ACT['ba-open']=async el=>{baState().open=el.dataset.id;await render()};
 ACT['ba-back']=async()=>{baState().open=null;await render()};
 ACT['ba-filter']=async el=>{baState().status=el.dataset.k;await render()};
 ACT['ba-print']=async()=>window.print();
-// Unduh BA sebagai file HTML mandiri (dibuat di browser, tidak disimpan di server)
-ACT['ba-download']=async()=>{
- const doc=$('#baPrint');if(!doc)return;
- const css='body{font-family:system-ui,Arial,sans-serif;color:#111;margin:24px;font-size:12.5px}table{width:100%;border-collapse:collapse}td,th{padding:5px 8px;border:1px solid #d1d5db;text-align:left}th{background:#f5f3ff}.num{text-align:right}.mono{font-family:monospace}.ba-head{display:flex;align-items:center;gap:14px;border-bottom:2px solid #111;padding-bottom:12px}.ba-head img{width:56px;height:56px;object-fit:contain}.ba-head h2{margin:0;font-size:18px}.ba-meta td{border:0}.ba-sign{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:22px}.ba-sign>div{border:1px solid #d1d5db;border-radius:8px;padding:12px;min-height:90px}.ba-stamp{margin-top:8px;display:grid;gap:2px}.ba-stamp small{color:#6b7280}.ba-text{margin:10px 0}';
- const h=(doc.querySelector('.mono')?.textContent||'BA').trim();
- const html=`<!doctype html><html lang="id"><head><meta charset="utf-8"/><title>${escapeHTML(h)}</title><style>${css}</style></head><body>${doc.outerHTML.replace(/<img[^>]*>/,'')}</body></html>`;
+// Unduh BA (lengkap, semua SKU selisih) sebagai satu file HTML. Dibuat di browser, tidak disimpan di server.
+async function baDownload(ids){
+ if(!ids.length){toast('Pilih BA dulu.',true);return}
+ const docs=await rpc('ba_export',{p_bas:ids});
+ const css='body{font-family:system-ui,Arial,sans-serif;color:#111;margin:24px;font-size:12.5px}table{width:100%;border-collapse:collapse}td,th{padding:5px 8px;border:1px solid #d1d5db;text-align:left}th{background:#f5f3ff}.num{text-align:right}.mono{font-family:monospace}.ba-head{display:flex;align-items:center;gap:14px;border-bottom:2px solid #111;padding-bottom:12px}.ba-head h2{margin:0;font-size:18px}.ba-meta td{border:0}.ba-sum td{border-color:#999}.ba-sign{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:22px}.ba-sign>div{border:1px solid #d1d5db;border-radius:8px;padding:12px;min-height:90px}.ba-stamp{margin-top:8px;display:grid;gap:2px}.ba-stamp small{color:#6b7280}.ba-text{margin:10px 0}.ba-adjnote{color:#065f46}.ba-doc{border:0;padding:0;max-width:none}.ba-page{break-after:page;margin-bottom:24px}.ba-page:last-child{break-after:auto}tr{break-inside:avoid}';
+ const body=docs.map(d=>`<section class="ba-page">${baArticle(d.header,d.summary,d.lines,d.summary.variance_count||0,true).replace(/<img[^>]*>/,'')}</section>`).join('');
+ const title=docs.length===1?docs[0].header.ba_no:`BA gabungan ${docs.length} BA`;
+ const html=`<!doctype html><html lang="id"><head><meta charset="utf-8"/><title>${escapeHTML(title)}</title><style>${css}</style></head><body>${body}</body></html>`;
+ const fname=docs.length===1?docs[0].header.ba_no.replace(/[\/\\]+/g,'-')+'.html':`BA_GABUNGAN_${iso(new Date())}_${docs.length}BA.html`;
  const u=URL.createObjectURL(new Blob([html],{type:'text/html;charset=utf-8'}));
- const a=document.createElement('a');a.href=u;a.download=h.replace(/[\/\\]+/g,'-')+'.html';document.body.appendChild(a);a.click();a.remove();
+ const a=document.createElement('a');a.href=u;a.download=fname;document.body.appendChild(a);a.click();a.remove();
  setTimeout(()=>URL.revokeObjectURL(u),1000);
- toast('BA diunduh sebagai file HTML.');
-};
+ await rpc('ba_mark_exported',{p_bas:ids});
+ toast(`${n(docs.length)} BA diunduh dan ditandai sudah diekspor.`);
+}
+ACT['ba-download']=async()=>{await baDownload([baState().open]);await render()};
+ACT['ba-export-sel']=async()=>{const b=baState();await baDownload([...b.sel]);await render()};
+ACT['ba-clean-sel']=async()=>{const b=baState();const ids=(b.all||[]).filter(x=>b.sel.has(x.id)&&x.exported_at).map(x=>x.id);if(!ids.length)return toast('Pilih BA yang sudah diekspor.',true);if(!confirm(`Bersihkan ${ids.length} BA dari database?\n\nPastikan file sudah tersimpan di Google Drive. Setelah dibersihkan, detail BA tidak bisa dibuka lagi di aplikasi.`))return;const k=await rpc('ba_clean',{p_bas:ids});b.sel.clear();toast(`${n(k)} BA dibersihkan dari database.`);await render()};
+CHG['ba-pick']=async el=>{const b=baState();b.sel=b.sel||new Set();el.checked?b.sel.add(el.dataset.id):b.sel.delete(el.dataset.id);await render()};
+CHG['ba-pick-all']=async el=>{const b=baState();b.sel=b.sel||new Set();(b.all||[]).filter(BA_MATCH[b.status]||BA_MATCH.ALL).forEach(x=>el.checked?b.sel.add(x.id):b.sel.delete(x.id));await render()};
+
 ACT['ba-create']=async el=>{const r=await rpc('ba_create',{p_cycle:el.dataset.id});toast(r.existed?`BA sudah ada: ${r.ba_no}`:`BA dibuat: ${r.ba_no}`);const b=baState();b.open=r.id;state.validation.open=false;state.page='ba';await render()};
 ACT['ba-sign']=async el=>{const lv=el.dataset.level;if(!confirm(lv==='SPV'?'Tanda tangani BA ini sebagai SPV? Nama dan waktu Anda akan tercatat.':'Setujui BA ini sebagai Manager? Nama dan waktu Anda akan tercatat.'))return;await rpc('ba_sign',{p_ba:el.dataset.id,p_level:lv});toast('BA berhasil ditandatangani.');await render()};
 CHG['ba-adj']=async el=>{await rpc('ba_adjust',{p_ba:el.dataset.id,p_done:el.checked});toast(el.checked?'BA ditandai sudah di-adjust.':'Tanda adjust dibatalkan.');await render()};
