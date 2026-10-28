@@ -805,23 +805,37 @@ ACT['c-bulk-del']=async()=>{
  const out=await rpc('schedule_delete',{p_cycles:ids});toast(`${n(out.deleted)} SO dihapus`);
  state.count.sel=new Set();await render();
 };
+function uploadPanelHTML(s){
+ return `<details class="card up-panel" id="upPanel"><summary><b>⬆ Upload Inventory</b><span class="muted small">Ganti inventory aktif toko. SO yang sudah SUBMITTED tidak ikut berubah.</span></summary>
+  <div class="up-body">
+   ${canManage()?`<select class="input select" data-change="up-store">${storeOptions(state.store,false)}</select>`:`<span class="chip blue"><i></i>${escapeHTML(labelStore(state.store))}</span>`}
+   <label class="dropzone"><b>⬆ Pilih File CSV Inventory Summary</b><small>Name - Variant, Category, Ending. Kolom SKU, Cost, dan Harga Retail opsional.</small><input type="file" id="fileInput" accept=".csv,text/csv" data-change="file-pick"/></label>
+   <div id="fileInfo" class="small muted">Belum ada file dipilih.</div>
+   <div id="retailPreview"></div>
+   <div class="row">${btn('Upload & Ganti Inventory','do-upload','primary')}</div>
+   <p class="footerhint">Inventory aktif sekarang: ${n(s?.inventory_count||0)} SKU. Maksimal 10.000 SKU per file.</p>
+  </div></details>`;
+}
 async function loadCount(){
  const s=current();
  if(!s?.cycle_id||s.status==='SCHEDULED')return countStart(s);
  const q=state.count;
  const data=await rpc('count_page',{p_cycle:s.cycle_id,p_offset:q.offset,p_limit:50,p_search:q.search,p_filter:q.filter,p_team:q.team||null});q.data=data;joinCountChannel(s.cycle_id);
  const edit=data.status==='COUNTING'||data.status==='RECOUNT';
+ const keepUp=$('#upPanel');
  const back=state.me.role!=='store'?`<div class="crumb"><button class="btn ghost" data-act="count-back">← Daftar SO</button><span class="muted small">${escapeHTML(labelStore(state.store))}</span></div>`:'';
  const options=[['ALL','Semua SKU'],['PENDING','Belum Lengkap'],['DONE','Sudah Lengkap'],['SELISIH','Status Selisih'],['TALLY','Status Tally']].map(([v,l])=>`<option value="${v}" ${v===q.filter?'selected':''}>${l}</option>`).join('');
  const teams=data.teams||[];
  const teamSel=teams.length?`<select id="countTeam" class="input" data-change="count-team"><option value="">Semua Tim / POS</option>${teams.map(t=>`<option value="${escapeHTML(t)}" ${t===q.team?'selected':''}>${escapeHTML(t)}</option>`).join('')}</select>`:'';
- $('#content').innerHTML=`${back}<div class="card">
+ $('#content').innerHTML=`${back}<div id="upSlot"></div><div class="card">
   <div class="card-head"><div class="row"><h3>SO Berjalan</h3>${chip(data.status)}</div>${edit?btn('Submit Counting','count-submit','dark'):''}</div>
   <div class="toolbar"><input id="countSearch" class="input grow" placeholder="Cari SKU / nama produk" value="${escapeHTML(q.search)}"/>${teamSel}<select id="countFilter" class="input" data-change="count-filter-chg">${options}</select>${btn('Cari','count-find','outline')}${btn('📷 Scan','scan-count','outline')}</div>
   <div class="tablewrap"><table id="countTable" class="count-table"><thead><tr><th>Nama Item & Warna</th>${POS.map(([,l])=>`<th class="num">${l}</th>`).join('')}<th class="num">Total</th><th>Alasan (wajib jika selisih)</th><th>Status</th></tr></thead><tbody>${data.items.length?data.items.map(x=>countRowHTML(x,edit)).join(''):'<tr><td colspan="9" class="empty">Tidak ada SKU</td></tr>'}</tbody></table></div>
   <div class="pager"><span class="small muted">${n(data.total_filtered?q.offset+1:0)}–${n(Math.min(q.offset+50,data.total_filtered))} dari ${n(data.total_filtered)} SKU</span><div class="row">${btn('← Sebelumnya','count-prev','outline')}${btn('Berikutnya →','count-next','outline')}</div></div>
   <div class="footerhint">Input tersimpan otomatis per baris. Tekan Submit Counting untuk mengirim semua hasil ke validasi SPV.</div>
  </div>`;
+ const slot=$('#upSlot');
+ if(slot){if(keepUp)slot.replaceWith(keepUp);else slot.outerHTML=uploadPanelHTML(s)}
  if(edit)restoreCountDraft(data.cycle_id);
  renderPresence();
 }
@@ -1048,7 +1062,7 @@ async function loadValidation(){
  <div class="mini-row">${mini('','Total SKU',n(sum.total_skus),'Seluruh SKU pada SO')}${mini('o','Variance',n(variance),'SKU selisih')}${mini('g','SKU Accuracy',P(acc),'tally / (tally + variance)')}${mini('a','Belum Lengkap',n(sum.missing_skus),'Posisi belum lengkap')}${mini('r','Blokir Approve',n(sum.blocking_skus),'Approve diblokir bila > 0')}</div>
  ${(sum.blocking_skus||0)>0?`<div class="note warning">${n(sum.blocking_skus)} SKU belum lengkap atau selisih belum beralasan. Approve diblokir sampai diperbaiki.</div>`:''}
  <div class="card">
-  <div class="card-head"><div class="row"><h3>Detail Validasi</h3>${chip(st)}<span class="mono muted small">${escapeHTML(String(data.cycle_id).slice(0,8))}</span></div>
+  <div class="card-head"><div class="row"><h3>Detail Validasi</h3>${chip(st)}</div>
    <div class="row">${editable?btn('Recount','val-recount','danger')+btn('Approve SO','val-approve','primary'):''}${st==='APPROVED'?btn('Buat BA','ba-create','primary',{id:data.cycle_id}):''}${st==='APPROVED'&&!data.archived?btn('Export CSV','val-export','dark'):''}${st==='APPROVED'&&isAdmin()?btn('Hapus Permanen','so-hard-del','danger',{id:data.cycle_id}):''}</div></div>
   <div class="toolbar">
    <div class="seg" role="tablist" aria-label="Tampilan SKU">
@@ -1178,7 +1192,7 @@ ACT['do-upload']=async()=>{
  if(!upRows.length)throw Error('Pilih CSV valid terlebih dahulu.');
  if(!confirm(`Ganti SEMUA inventory aktif ${labelStore(state.store)} dengan ${upRows.length} SKU?`))return;
  const out=await rpc('upload',{p_store:state.store,p_rows:upRows});
- toast(`Upload berhasil: ${n(out.sku_count)} SKU. ${n(out.synced_lines)} baris SO aktif diperbarui.`);upRows=[];await refreshDashboard();await render();
+ toast(`Upload berhasil: ${n(out.sku_count)} SKU. ${n(out.synced_lines)} baris SO aktif diperbarui${out.locked_lines?`, ${n(out.locked_lines)} baris SO SUBMITTED dikunci`:''}.`);upRows=[];$('#upPanel')?.remove();await refreshDashboard();await render();
 };
 function renderRetailPreview(rows){
  const box=$('#retailPreview');if(!box)return;

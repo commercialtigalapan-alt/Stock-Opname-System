@@ -1115,3 +1115,12 @@ body{-webkit-font-smoothing:antialiased}
 @media (max-width:640px){.crow-grid{grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:5px}.crow .cname{font-size:11px}}
 .lg-link{background:none;border:0;color:#4338ca;font-weight:700;font-size:13px;cursor:pointer;align-self:flex-end;padding:0;margin:-4px 0 2px}
 .lg-link:hover{text-decoration:underline}
+
+/* v12: panel upload di dalam counting store (bisa dilipat) */
+.up-panel{padding:0;overflow:hidden}
+.up-panel>summary{cursor:pointer;list-style:none;padding:14px 18px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.up-panel>summary::-webkit-details-marker{display:none}
+.up-panel>summary::after{content:'▾';margin-left:auto;color:#94a3b8}
+.up-panel[open]>summary::after{content:'▴'}
+.up-panel[open]>summary{border-bottom:1px solid rgba(15,23,42,.08)}
+.up-body{padding:14px 18px;display:grid;gap:12px}
