@@ -1207,7 +1207,12 @@ async function showAdmin(){
    <div class="toolbar"><select class="input select grow" id="newUser"><option value="">Pilih akun belum aktif</option>${unknown.map(x=>`<option value="${escapeHTML(x.id)}">${escapeHTML(x.email)}</option>`).join('')}</select><select class="input select" id="newRole"><option value="store">STORE</option><option value="spv">SPV</option><option value="admin">ADMIN</option></select><select class="input select" id="newStore"><option value="">Pilih toko (khusus Store)</option>${state.stores.map(s=>`<option value="${escapeHTML(s.code)}">${escapeHTML(s.name)}</option>`).join('')}</select><input class="input grow" id="newName" maxlength="80" placeholder="Nama lengkap (opsional)"/>${btn('Aktifkan User','activate-user','primary')}</div>
   </div>
   <div class="card"><div class="card-head"><h3>2. Akun Aktif</h3><span class="muted small">${n(users.length)} akun</span></div>
-   <div class="tablewrap"><table><thead><tr><th>Nama</th><th>Email</th><th>Role</th><th>Toko</th><th>Area SPV</th><th>Password</th></tr></thead><tbody>${users.map(x=>`<tr><td><div style="display:flex;gap:6px;align-items:center;min-width:260px"><input class="input" style="flex:1;min-width:0" id="uname-${escapeHTML(x.id)}" maxlength="80" value="${escapeHTML(x.full_name||'')}" placeholder="Isi nama"/><button class="btn outline sm" style="white-space:nowrap" data-act="save-user-name" data-id="${escapeHTML(x.id)}">Simpan</button></div></td><td class="mono small">${escapeHTML(x.email)}</td><td>${chip(x.role.toUpperCase(),x.role.toUpperCase())}</td><td>${escapeHTML(x.store_code||'—')}</td><td>${escapeHTML((x.spv_stores||[]).map(labelStore).join(', ')||'—')}</td><td><button class="btn outline sm" data-act="user-reset" data-email="${escapeHTML(x.email)}">Kirim reset</button></td></tr>`).join('')||'<tr><td colspan="4" class="empty">Belum ada akun.</td></tr>'}</tbody></table></div></div>
+   <div class="tablewrap"><table><thead><tr><th>Nama</th><th>Email</th><th>Role</th><th>Toko</th><th>Area SPV</th><th>Status</th><th>Aksi</th></tr></thead><tbody>${users.map(x=>{const isMe=x.id===state.me?.id,off=x.active===false;return `<tr><td><div style="display:flex;gap:6px;align-items:center;min-width:260px"><input class="input" style="flex:1;min-width:0" id="uname-${escapeHTML(x.id)}" maxlength="80" value="${escapeHTML(x.full_name||'')}" placeholder="Isi nama"/><button class="btn outline sm" style="white-space:nowrap" data-act="save-user-name" data-id="${escapeHTML(x.id)}">Simpan</button></div></td><td class="mono small">${escapeHTML(x.email)}</td><td>${chip(x.role.toUpperCase(),x.role.toUpperCase())}</td><td>${escapeHTML(x.store_code||'—')}</td><td>${escapeHTML((x.spv_stores||[]).map(labelStore).join(', ')||'—')}</td><td><span class="small" style="font-weight:700;color:${off?'#9a3412':'#047857'}">${off?'Nonaktif':'Aktif'}</span></td>
+    <td>${isMe?'<span class="muted small">Akun Anda</span>':`<div style="display:flex;gap:6px;flex-wrap:wrap;min-width:250px">
+      <button class="btn outline sm" data-act="admin-pass" data-id="${escapeHTML(x.id)}" data-email="${escapeHTML(x.email)}" data-name="${escapeHTML(x.name||'')}">Ubah password</button>
+      <button class="btn outline sm" data-act="admin-active" data-id="${escapeHTML(x.id)}" data-email="${escapeHTML(x.email)}" data-on="${off?0:1}">${off?'Aktifkan':'Nonaktifkan'}</button>
+      <button class="btn danger sm" data-act="admin-delete" data-id="${escapeHTML(x.id)}" data-email="${escapeHTML(x.email)}" ${off?'':'disabled title="Nonaktifkan dulu sebelum dihapus"'}>Hapus</button>
+     </div>`}</td></tr>`}).join('')||'<tr><td colspan="7" class="empty">Belum ada akun.</td></tr>'}</tbody></table></div></div>
   <div class="card"><div class="card-head"><h3>3. SPV Mapping per Toko</h3><span class="muted small">${n(map.filter(x=>x.spv_user).length)} / ${n(map.length)} toko sudah punya SPV</span></div>
    <p class="small muted">Pilih area dan SPV untuk tiap toko. Perubahan tersimpan otomatis. SPV hanya melihat toko yang dipetakan kepadanya.</p>
    <div class="tablewrap"><table><thead><tr><th>Toko</th><th>Area</th><th>SPV</th></tr></thead><tbody>${map.map(x=>{const areaOpts=[...new Set([...SPV_AREAS,...(x.area?[x.area]:[])])];return `<tr><td><b>${escapeHTML(x.name)}</b><br><small class="mono muted">${escapeHTML(x.code)}</small></td>
@@ -1632,5 +1637,42 @@ ACT['user-reset']=async el=>{
  const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:location.href.split('?')[0].split('#')[0]});
  if(error)return toast(error.message,true);
  toast(`Link reset dikirim ke ${email}.`);
+};
+function openAdminPass(id,email,name){
+ if($('#admPassModal'))return;
+ const ov=document.createElement('div');ov.id='admPassModal';ov.className='modal-bg';
+ ov.innerHTML=`<div class="modal" style="max-width:420px">
+  <div class="modal-head"><div><h3>Ubah password</h3><p>${escapeHTML(name||email)} · <span class="mono small">${escapeHTML(email)}</span></p></div><button class="btn ghost" data-act="adm-pass-close" aria-label="Tutup">✕</button></div>
+  <div style="display:grid;gap:10px;padding:4px 2px">
+   <label class="field"><span>Password baru</span><input class="input" id="apNew" type="password" minlength="6" autocomplete="new-password"/></label>
+   <label class="field"><span>Ulangi password baru</span><input class="input" id="apNew2" type="password" minlength="6" autocomplete="new-password"/></label>
+   <small class="muted">Minimal 6 karakter. Sesi user tersebut dicabut, jadi harus login ulang dengan password baru.</small>
+  </div>
+  <div class="modal-foot"><button class="btn outline" data-act="adm-pass-close">Batal</button><button class="btn primary" id="apSave">Simpan password</button></div>
+ </div>`;
+ document.body.appendChild(ov);
+ $('#apSave').onclick=async()=>{
+  const p1=$('#apNew').value,p2=$('#apNew2').value;
+  if(p1.length<6)return toast('Password minimal 6 karakter.',true);
+  if(p1!==p2)return toast('Konfirmasi password tidak sama.',true);
+  const btn=$('#apSave');btn.disabled=true;
+  try{await rpc('admin_set_password',{p_user:id,p_password:p1});toast('Password '+email+' berhasil diubah.');$('#admPassModal')?.remove()}
+  catch(ex){toast(ex.message,true);btn.disabled=false}
+ };
+}
+ACT['admin-pass']=async el=>openAdminPass(el.dataset.id,el.dataset.email,el.dataset.name);
+ACT['adm-pass-close']=async()=>{$('#admPassModal')?.remove()};
+ACT['admin-active']=async el=>{
+ const on=el.dataset.on==='1',email=el.dataset.email||'';
+ const msg=on?`Nonaktifkan ${email}?\n\nUser tidak bisa login atau memakai aplikasi sampai diaktifkan lagi.`:`Aktifkan kembali ${email}?`;
+ if(!confirm(msg))return;
+ await rpc('admin_set_active',{p_user:el.dataset.id,p_active:!on});
+ toast(on?'Akun dinonaktifkan.':'Akun diaktifkan.');await render();
+};
+ACT['admin-delete']=async el=>{
+ const email=el.dataset.email||'';
+ if(!confirm(`HAPUS PERMANEN akun ${email}?\n\nLogin dan akun akan dihapus dan tidak bisa dikembalikan.\nJika akun punya riwayat SO/upload/BA, penghapusan ditolak dan akun tetap nonaktif.`))return;
+ await rpc('admin_delete_user',{p_user:el.dataset.id});
+ toast('Akun dihapus permanen.');await render();
 };
 sb.auth.onAuthStateChange((ev)=>{if(ev==='PASSWORD_RECOVERY')setTimeout(()=>openPassModal(true),400)});
