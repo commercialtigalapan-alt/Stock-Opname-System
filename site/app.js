@@ -229,7 +229,7 @@ function shell(){
  </aside>
  <main class="main">
   <header class="topbar"><div class="titles"><h1 id="topTitle"></h1><p id="topSubtitle"></p></div>
-   <div class="top-actions"><div class="presence-wrap"><button class="btn pill" data-act="presence-toggle" title="Siapa yang sedang aktif">👥 <b id="presN">0</b> aktif</button><div class="presence-panel hidden" id="presPanel"></div></div><span class="sys" id="sysPill"><i></i>System Online</span><button class="btn pill" data-act="refresh" title="Muat ulang data dari server">↻ Refresh</button>${isAdmin()?'<button class="btn pill ghost" data-act="app-reset" title="Muat ulang seluruh aplikasi">⟲ Reset</button>':''}<button class="btn pill ghost" data-act="logout">Keluar</button></div>
+   <div class="top-actions"><div class="presence-wrap"><button class="btn pill" data-act="presence-toggle" title="Siapa yang sedang aktif">👥 <b id="presN">0</b> aktif</button><div class="presence-panel hidden" id="presPanel"></div></div><span class="sys" id="sysPill"><i></i>System Online</span><button class="btn pill" data-act="filters-reset" title="Kembalikan semua filter ke kondisi awal">↺ Reset filter</button><button class="btn pill" data-act="refresh" title="Muat ulang data dari server">↻ Refresh</button>${isAdmin()?'<button class="btn pill ghost" data-act="app-reset" title="Muat ulang seluruh aplikasi">⟲ Reset</button>':''}<button class="btn pill ghost" data-act="logout">Keluar</button></div>
   </header>
   <div class="content" id="content"></div>
  </main></section>`);
@@ -377,6 +377,16 @@ async function showDashboard(){
 }
 CHG['dash-filter']=async()=>{state.dash.store=$('#dStore').value;state.dash.type=$('#dType').value;await showDashboard()};
 ACT['dash-tab']=async el=>{state.dash.tab=el.dataset.tab;await showDashboard()};
+function resetAllFilters(){
+ state.dash.store='';state.dash.type='';state.dash.range=newRange();
+ state.sch.store='';state.sch.range=newRange();
+ state.exp.store='';state.exp.range=newRange();state.exp.sel=new Set();
+ Object.assign(state.count,{offset:0,search:'',filter:'ALL',team:'',listQ:''});
+ Object.assign(state.validation,{offset:0,search:'',filter:'VARIANCE',status:'ALL',listQ:''});
+ Object.assign(state.cov,{store:'',filter:'ALL',search:'',offset:0});
+ if(state.ba){state.ba.status='ALL';state.ba.store='ALL'}
+}
+ACT['filters-reset']=async()=>{resetAllFilters();toast('Semua filter dikembalikan ke awal.');await render()};
 ACT['dash-reset']=async()=>{state.dash.store='';state.dash.type='';state.dash.range=newRange();await showDashboard()};
 
 /* ---------- Import CSV inventory ---------- */
