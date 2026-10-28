@@ -229,7 +229,7 @@ function shell(){
  </aside>
  <main class="main">
   <header class="topbar"><div class="titles"><h1 id="topTitle"></h1><p id="topSubtitle"></p></div>
-   <div class="top-actions"><div class="presence-wrap"><button class="btn pill" data-act="presence-toggle" title="Siapa yang sedang aktif">👥 <b id="presN">0</b> aktif</button><div class="presence-panel hidden" id="presPanel"></div></div><span class="sys" id="sysPill"><i></i>System Online</span><button class="btn pill" data-act="refresh" title="Muat ulang data dari server">↻ Refresh</button>${isAdmin()?'<button class="btn pill ghost" data-act="app-reset" title="Muat ulang seluruh aplikasi">⟲ Reset</button>':''}<button class="btn pill ghost" data-act="pass-open" title="Ganti password akun Anda">Ganti Password</button><button class="btn pill ghost" data-act="logout">Keluar</button></div>
+   <div class="top-actions"><div class="presence-wrap"><button class="btn pill" data-act="presence-toggle" title="Siapa yang sedang aktif">👥 <b id="presN">0</b> aktif</button><div class="presence-panel hidden" id="presPanel"></div></div><span class="sys" id="sysPill"><i></i>System Online</span><button class="btn pill" data-act="refresh" title="Muat ulang data dari server">↻ Refresh</button>${isAdmin()?'<button class="btn pill ghost" data-act="app-reset" title="Muat ulang seluruh aplikasi">⟲ Reset</button>':''}<button class="btn pill ghost" data-act="logout">Keluar</button></div>
   </header>
   <div class="content" id="content"></div>
  </main></section>`);
@@ -1200,7 +1200,8 @@ async function showAdmin(){
  const [registered,pending,mapping]=await Promise.all([rpc('users_list'),rpc('pending_users'),rpc('spv_mapping')]);
  const users=registered||[],unknown=pending||[],map=mapping||[];
  const spvs=users.filter(x=>x.role==='spv');
- $('#content').innerHTML=`<div class="card">
+ $('#content').innerHTML=`<div class="card"><div class="card-head"><h3>0. Password Saya</h3><span class="muted small">${escapeHTML(state.me.email)}</span></div><p class="small muted">Ganti password akun Admin yang sedang login. Password baru berlaku untuk login berikutnya.</p><div><button class="btn primary" data-act="pass-open">Ganti password saya</button></div></div>
+  <div class="card">
    <div class="card-head"><h3>1. Aktivasi Akun Baru</h3><span class="muted small">${n(unknown.length)} akun menunggu</span></div>
    <p class="small muted">Admin memilih role dan toko untuk akun yang sudah terdaftar di sistem.</p>
    <div class="toolbar"><select class="input select grow" id="newUser"><option value="">Pilih akun belum aktif</option>${unknown.map(x=>`<option value="${escapeHTML(x.id)}">${escapeHTML(x.email)}</option>`).join('')}</select><select class="input select" id="newRole"><option value="store">STORE</option><option value="spv">SPV</option><option value="admin">ADMIN</option></select><select class="input select" id="newStore"><option value="">Pilih toko (khusus Store)</option>${state.stores.map(s=>`<option value="${escapeHTML(s.code)}">${escapeHTML(s.name)}</option>`).join('')}</select><input class="input grow" id="newName" maxlength="80" placeholder="Nama lengkap (opsional)"/>${btn('Aktifkan User','activate-user','primary')}</div>
