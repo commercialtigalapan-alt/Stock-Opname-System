@@ -763,9 +763,15 @@ async function showCount(){
  return showCountList();
 }
 function current(){return state.dashboard.find(x=>x.code===state.store)||null}
+function mountUpPanel(keep,s){
+ const slot=$('#upSlot');if(!slot)return;
+ if(keep)slot.replaceWith(keep);else slot.outerHTML=uploadPanelHTML(s);
+}
 function countStart(s){
  const back=state.me.role!=='store'?`<div class="crumb"><button class="btn ghost" data-act="count-back">← Daftar SO</button></div>`:'';
- $('#content').innerHTML=`${back}<div class="card stack"><div class="note info">${s?.status==='SCHEDULED'?`SO terjadwal${s.planned_date?' pada '+fmtDate(s.planned_date):''}. Klik Proses untuk memulai SO.`:'Belum ada SO untuk toko ini. Pastikan inventory sudah di-upload.'}</div>${s?.status==='SCHEDULED'||!s?.cycle_id?btn('▶ Proses / Mulai SO','start-so','primary'):''}</div>`;
+ const keepUp=$('#upPanel');
+ $('#content').innerHTML=`${back}<div id="upSlot"></div><div class="card stack"><div class="note info">${s?.status==='SCHEDULED'?`SO terjadwal${s.planned_date?' pada '+fmtDate(s.planned_date):''}. Klik Proses untuk memulai SO.`:'Belum ada SO untuk toko ini. Pastikan inventory sudah di-upload.'}</div>${s?.status==='SCHEDULED'||!s?.cycle_id?btn('▶ Proses / Mulai SO','start-so','primary'):''}</div>`;
+ mountUpPanel(keepUp,s);
 }
 ACT['start-so']=async()=>{if(!confirm('Mulai SO sekarang? Stok sistem diambil dari inventory saat ini.'))return;await rpc('start',{p_store:state.store});toast('SO berhasil dimulai');state.count.open=true;await refreshDashboard();await render()};
 ACT['count-back']=async()=>{state.count.open=false;state.count.search='';state.count.offset=0;await render()};
@@ -953,6 +959,23 @@ ACT['count-find']=async()=>{const q=state.count;q.search=$('#countSearch').value
 ACT['scan-count']=()=>openCountScanner();
 
 /* ---------- Kalkulator: tambah / kurangi / ganti ke posisi, berulang ---------- */
+let calcLog=[];
+try{calcLog=JSON.parse(sessionStorage.getItem('calcLog')||'[]')}catch{calcLog=[]}
+function calcSplit(label){return String(label||'').includes(' · ')?String(label).split(' · '):['',String(label||'')]}
+function pushCalcLog(e){
+ const [sku,pos]=calcSplit(e.label);
+ calcLog.push({t:Date.now(),sku,pos,op:e.op,amt:e.amt,before:e.before,after:e.after});
+ if(calcLog.length>200)calcLog=calcLog.slice(-200);
+ try{sessionStorage.setItem('calcLog',JSON.stringify(calcLog))}catch{}
+}
+function calcHistHTML(){
+ const [sku]=calcSplit(calc?.label);
+ const mine=calcLog.filter(x=>x.sku===sku).slice(-8).reverse();
+ const sym={add:'+',sub:'−',set:'='};
+ const rows=mine.map(x=>`<li><span class="mono small">${new Date(x.t).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Makassar'})}</span> <b>${escapeHTML(x.pos)}</b> ${sym[x.op]||''}${n(x.amt)} <span class="muted small">${n(x.before)} → ${n(x.after)}</span></li>`).join('');
+ return `<div class="calc-hist"><div class="calc-hist-head"><b>Riwayat ${sku?escapeHTML(sku):'kalkulator'}</b><span class="muted small">${n(mine.length)} tercatat</span>${calcLog.length?'<button class="btn ghost sm" data-act="calc-hist-clear">Hapus semua</button>':''}</div>${rows?`<ul>${rows}</ul>`:'<p class="small muted">Belum ada riwayat untuk item ini.</p>'}</div>`;
+}
+ACT['calc-hist-clear']=async()=>{calcLog=[];try{sessionStorage.removeItem('calcLog')}catch{};drawCalc()};
 function openCalc(input,label){calc={input,typed:'',label:label||'Qty'};drawCalc()}
 function drawCalc(){
  let ov=document.getElementById('calcOv');
@@ -965,6 +988,7 @@ function drawCalc(){
   <div class="calc-disp input-disp"><small>Angka input</small><b>${calc.typed===''?'0':escapeHTML(calc.typed)}</b></div>
   <div class="keypad">${keys.map(k=>`<button class="key" data-act="calc-key" data-k="${k}">${k}</button>`).join('')}<button class="key warn" data-act="calc-key" data-k="C">C</button></div>
   <div class="calc-actions"><button class="btn primary" data-act="calc-apply" data-op="add">+ Tambah</button><button class="btn danger" data-act="calc-apply" data-op="sub">− Kurangi</button><button class="btn outline" data-act="calc-apply" data-op="set">= Ganti</button></div>
+  ${calcHistHTML()}
   <p class="small muted">Setiap Tambah/Kurangi langsung masuk ke posisi. Kalkulator tetap terbuka untuk input berikutnya.</p>
  </div>`;
  if(!ov){ov=document.createElement('div');ov.id='calcOv';ov.className='calc-bg';document.body.appendChild(ov)}
@@ -987,6 +1011,7 @@ ACT['calc-apply']=async el=>{
  const amt=Number(calc.typed||0);
  const cur=calc.input.value===''?0:Number(calc.input.value);
  const next=op==='add'?cur+amt:op==='sub'?Math.max(0,cur-amt):amt;
+ pushCalcLog({label:calc.label,op,amt,before:cur,after:next});
  calc.input.value=String(next);
  calc.input.dispatchEvent(new Event('input',{bubbles:true}));
  calc.input.dispatchEvent(new Event('change',{bubbles:true}));
