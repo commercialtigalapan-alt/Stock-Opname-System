@@ -857,3 +857,13 @@ body{font-size:13.5px;background:radial-gradient(900px 420px at 100% -10%,#fde4c
 /* panel warna jadi blok biasa, agar grid tile memakai lebar penuh (tidak sisa ruang kosong) */
 .color-panel{display:block}
 .crow-grid{width:100%}
+
+/* ===== Presence: user aktif di topbar ===== */
+.presence-wrap{position:relative}
+.presence-panel{position:absolute;right:0;top:calc(100% + 8px);width:360px;max-width:88vw;max-height:60vh;overflow:auto;background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 18px 40px rgba(15,23,42,.18);padding:10px;z-index:60}
+.pres-head{display:flex;justify-content:space-between;align-items:center;padding:4px 4px 8px;border-bottom:1px solid #f1f5f9;margin-bottom:6px}
+.pres-row{display:flex;gap:10px;padding:8px 4px;border-bottom:1px solid #f8fafc}
+.pres-row:last-child{border-bottom:0}
+.pres-av{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#f97316,#ec4899);color:#fff;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center;flex:none}
+.pres-main{min-width:0;display:grid;gap:2px}
+.pres-name{font-weight:800;font-size:13px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}

@@ -177,7 +177,7 @@ function loginView(message=''){
 }
 async function start(){
  const {data:{user}}=await sb.auth.getUser();if(!user){loginView();return}
- try{state.me=await rpc('me');state.stores=state.me.stores||[];state.store=state.me.store_code||state.stores[0]?.code||'';state.page='dashboard';await refreshDashboard();shell();await render()}
+ try{state.me=await rpc('me');state.stores=state.me.stores||[];state.store=state.me.store_code||state.stores[0]?.code||'';state.page='dashboard';await refreshDashboard();shell();await render();startPresence()}
  catch(ex){loginView('Login berhasil, tetapi '+ex.message);toast(ex.message,true)}
 }
 const PAGE={
@@ -208,7 +208,7 @@ function shell(){
  </aside>
  <main class="main">
   <header class="topbar"><div class="titles"><h1 id="topTitle"></h1><p id="topSubtitle"></p></div>
-   <div class="top-actions"><span class="sys" id="sysPill"><i></i>System Online</span><button class="btn pill" data-act="refresh" title="Muat ulang data dari server">↻ Refresh</button>${isAdmin()?'<button class="btn pill ghost" data-act="app-reset" title="Muat ulang seluruh aplikasi">⟲ Reset</button>':''}<button class="btn pill ghost" data-act="logout">Keluar</button></div>
+   <div class="top-actions"><div class="presence-wrap"><button class="btn pill" data-act="presence-toggle" title="Siapa yang sedang aktif">👥 <b id="presN">0</b> aktif</button><div class="presence-panel hidden" id="presPanel"></div></div><span class="sys" id="sysPill"><i></i>System Online</span><button class="btn pill" data-act="refresh" title="Muat ulang data dari server">↻ Refresh</button>${isAdmin()?'<button class="btn pill ghost" data-act="app-reset" title="Muat ulang seluruh aplikasi">⟲ Reset</button>':''}<button class="btn pill ghost" data-act="logout">Keluar</button></div>
   </header>
   <div class="content" id="content"></div>
  </main></section>`);
@@ -226,7 +226,7 @@ async function softRefresh(){
 }
 ACT['refresh']=async()=>{try{await softRefresh();await render();toast('Data diperbarui dari server')}catch(ex){toast(ex.message,true)}};
 ACT['app-reset']=()=>{location.reload()};
-ACT['logout']=async()=>{await sb.auth.signOut();loginView()};
+ACT['logout']=async()=>{stopPresence();await sb.auth.signOut();loginView()};
 function updateNav(){const el=$('#nav');if(!el)return;let last='',html='';const b=state.badges;
  for(const [id,title,icon,section] of menu()){
   if(section!==last){html+=`<div class="nav-sec">${section}</div>`;last=section}
@@ -254,6 +254,7 @@ async function render(){
   if(state.page==='admin')await showAdmin();
  }catch(ex){$('#content').innerHTML=`<div class="card"><div class="note warning">${escapeHTML(ex.message)}</div></div>`;toast(ex.message,true)}
  const pill=$('#sysPill');if(pill){pill.classList.toggle('off',!state.online);pill.lastChild.textContent=state.online?'System Online':'Koneksi terputus'}
+ updatePresence();
 }
 async function loadBadges(){try{const k=await rpc('kpi',{});state.badges={schedule:k.so_scheduled+k.so_running,count:k.so_running+k.so_scheduled,validation:k.so_submitted}}catch(e){state.badges={}}}
 function storeOptions(sel,all){return `${all?'<option value="">Semua Store</option>':''}${state.stores.map(s=>`<option value="${escapeHTML(s.code)}" ${s.code===sel?'selected':''}>${escapeHTML(s.name)}</option>`).join('')}`}
@@ -1297,3 +1298,68 @@ ACT['so-hard-del']=async el=>{
  state.validation.open=false;state.validation.data=null;
  await refreshDashboard();await render();
 };
+
+/* ---------- Presence: siapa yang aktif, di menu mana, dan sedang mengerjakan apa ---------- */
+let presCh=null,presKey=null,presTimer=null;
+function presActivity(){
+ const pg=state.page,f=document.activeElement;
+ if(pg==='count'){
+  if(f?.closest?.('#countTable')){
+   const tr=f.closest('tr[data-sku]');const pos=POS.find(([k])=>k===f.dataset.pos);
+   return `Mengisi ${pos?pos[1]:'alasan'} · SKU ${tr?.dataset.sku||''}`;
+  }
+  return (state.count.open||state.me.role==='store')?'Counting SO':'Daftar SO counting';
+ }
+ if(pg==='validation')return state.validation.open?'Validasi SPV (detail SO)':'Daftar validasi SPV';
+ if(pg==='schedule')return state.builder?'Membuat / mengubah jadwal SO':'Melihat jadwal SO';
+ if(pg==='coverage')return 'Cakupan SKU';
+ if(pg==='upload')return 'Upload inventory';
+ if(pg==='export')return 'Export & pembersihan';
+ if(pg==='admin')return 'Manajemen akses';
+ return 'Dashboard';
+}
+function presPayload(){
+ return {name:state.me.name||state.me.email,role:state.me.role,store:state.store||'',storeLabel:labelStore(state.store)||'',
+  page:(PAGE[state.page]||PAGE.dashboard)[0],act:presActivity(),at:Date.now()};
+}
+function updatePresence(){
+ if(!presCh||!state.me)return;
+ clearTimeout(presTimer);
+ presTimer=setTimeout(()=>{presCh.track(presPayload()).catch(()=>{})},120);
+}
+function renderPresence(){
+ if(!presCh||!state.me)return;
+ const st=presCh.presenceState?presCh.presenceState():{};
+ let list=Object.values(st).flat();
+ if(state.me.role==='store')list=list.filter(x=>x.store===state.me.store_code);
+ list.sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+ const cnt=$('#presN');if(cnt)cnt.textContent=n(list.length);
+ const panel=$('#presPanel');
+ if(panel&&!panel.classList.contains('hidden')){
+  panel.innerHTML=`<div class="pres-head"><b>User aktif</b><span class="small muted">${n(list.length)} sesi</span></div>`+
+   (list.map(x=>{const mins=Math.max(0,Math.round((Date.now()-(x.at||Date.now()))/60000));
+    return `<div class="pres-row"><div class="pres-av">${escapeHTML(ini(x.name))}</div><div class="pres-main">
+      <div class="pres-name">${escapeHTML(x.name||'-')} ${chip(String(x.role||'').toUpperCase(),String(x.role||'').toUpperCase())}</div>
+      <div class="small"><b>${escapeHTML(x.page||'-')}</b>${x.storeLabel?` · ${escapeHTML(x.storeLabel)}`:''}</div>
+      <div class="small muted">${escapeHTML(x.act||'')}</div>
+      <div class="small muted">${mins<1?'baru saja':mins+' menit lalu'}</div></div></div>`}).join('')||'<div class="empty small">Tidak ada user lain yang aktif.</div>');
+ }
+}
+function startPresence(){
+ if(presCh||!state.me)return;
+ presKey=`${state.me.id}-${Math.random().toString(36).slice(2,8)}`;
+ try{
+  const ch=sb.channel('so-presence',{config:{presence:{key:presKey}}});
+  presCh=ch;
+  ch.on('presence',{event:'sync'},()=>renderPresence())
+   .subscribe(status=>{if(status==='SUBSCRIBED')ch.track(presPayload()).catch(()=>{})});
+ }catch(e){presCh=null}
+ document.addEventListener('focusin',updatePresence);
+ document.addEventListener('focusout',updatePresence);
+}
+function stopPresence(){
+ if(presCh){try{sb.removeChannel(presCh)}catch(e){}presCh=null}
+ clearTimeout(presTimer);
+}
+ACT['presence-toggle']=async()=>{const p=$('#presPanel');if(!p)return;p.classList.toggle('hidden');renderPresence()};
+document.addEventListener('click',e=>{const p=$('#presPanel');if(p&&!p.classList.contains('hidden')&&!e.target.closest('.presence-wrap'))p.classList.add('hidden')});
