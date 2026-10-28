@@ -1458,7 +1458,7 @@ async function loadBADetail(){
  $('#content').innerHTML=`<div class="crumb no-print"><button class="btn ghost" data-act="ba-back">← Daftar BA</button></div>
  <div class="card ba-actions no-print">
   <div class="row"><b class="mono">${escapeHTML(h.ba_no)}</b>${h.adj_at?chip('TALLY','Sudah di-adjust'):chip('SUBMITTED',h.mgr_at?'Siap di-adjust':(h.spv_at?'Menunggu Manager':'Menunggu SPV'))}</div>
-  <div class="row">${canSpv?btn('Tanda tangan SPV','ba-sign','primary',{id:h.id,level:'SPV'}):''}${canMgr?btn('Setujui Manager','ba-sign','dark',{id:h.id,level:'MGR'}):''}${btn('Cetak / Simpan PDF','ba-print','ghost')}</div>
+  <div class="row">${canSpv?btn('Tanda tangan SPV','ba-sign','primary',{id:h.id,level:'SPV'}):''}${canMgr?btn('Setujui Manager','ba-sign','dark',{id:h.id,level:'MGR'}):''}${btn('Unduh HTML','ba-download','ghost')}${btn('Cetak / PDF','ba-print','ghost')}</div>
  </div>
  <article class="ba-doc" id="baPrint">
   <header class="ba-head"><img src="logo.png" alt=""/><div><h2>BERITA ACARA STOCK OPNAME</h2><p class="mono">${escapeHTML(h.ba_no)}</p></div></header>
@@ -1470,7 +1470,7 @@ async function loadBADetail(){
    <tr><td>SKU selisih</td><td class="num">${n(s.variance_count)}</td><td>Net selisih qty</td><td class="num">${signed(s.net_qty)}</td></tr>
    <tr><td>Nilai kekurangan</td><td class="num">${rp(s.missing_value)}</td><td>Nilai kelebihan</td><td class="num">${rp(s.surplus_value)}</td></tr>
   </tbody></table>
-  ${total?`<p class="ba-text">Daftar SKU selisih${lines.length<total?` (menampilkan ${n(lines.length)} dari ${n(total)} SKU, urut selisih terbesar)`:''}:</p>
+  ${total?`<p class="ba-text">Daftar SKU selisih${lines.length<total?` (menampilkan ${n(lines.length)} dari ${n(total)} SKU, urut selisih terbesar; daftar lengkap ada di export CSV)`:''}:</p>
   <div class="tablewrap ba-lines"><table><thead><tr><th>SKU</th><th>Nama item</th><th class="num">System</th><th class="num">Actual</th><th class="num">Selisih</th><th class="num">Nilai selisih</th></tr></thead><tbody>
   ${lines.map(l=>`<tr><td class="mono">${escapeHTML(l.sku)}</td><td>${escapeHTML(l.item_name)}</td><td class="num">${n(l.system_qty)}</td><td class="num">${n(l.actual_qty)}</td><td class="num">${signed(l.diff_qty)}</td><td class="num">${rp(l.diff_qty*l.unit_cost,true)}</td></tr>`).join('')}
   </tbody></table></div>`:'<p class="ba-text">Tidak ada selisih. Seluruh SKU sesuai dengan sistem.</p>'}
@@ -1485,6 +1485,17 @@ ACT['ba-open']=async el=>{baState().open=el.dataset.id;await render()};
 ACT['ba-back']=async()=>{baState().open=null;await render()};
 ACT['ba-filter']=async el=>{baState().status=el.dataset.k;await render()};
 ACT['ba-print']=async()=>window.print();
+// Unduh BA sebagai file HTML mandiri (dibuat di browser, tidak disimpan di server)
+ACT['ba-download']=async()=>{
+ const doc=$('#baPrint');if(!doc)return;
+ const css='body{font-family:system-ui,Arial,sans-serif;color:#111;margin:24px;font-size:12.5px}table{width:100%;border-collapse:collapse}td,th{padding:5px 8px;border:1px solid #d1d5db;text-align:left}th{background:#f5f3ff}.num{text-align:right}.mono{font-family:monospace}.ba-head{display:flex;align-items:center;gap:14px;border-bottom:2px solid #111;padding-bottom:12px}.ba-head img{width:56px;height:56px;object-fit:contain}.ba-head h2{margin:0;font-size:18px}.ba-meta td{border:0}.ba-sign{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:22px}.ba-sign>div{border:1px solid #d1d5db;border-radius:8px;padding:12px;min-height:90px}.ba-stamp{margin-top:8px;display:grid;gap:2px}.ba-stamp small{color:#6b7280}.ba-text{margin:10px 0}';
+ const h=(doc.querySelector('.mono')?.textContent||'BA').trim();
+ const html=`<!doctype html><html lang="id"><head><meta charset="utf-8"/><title>${escapeHTML(h)}</title><style>${css}</style></head><body>${doc.outerHTML.replace(/<img[^>]*>/,'')}</body></html>`;
+ const u=URL.createObjectURL(new Blob([html],{type:'text/html;charset=utf-8'}));
+ const a=document.createElement('a');a.href=u;a.download=h.replace(/[\/\\]+/g,'-')+'.html';document.body.appendChild(a);a.click();a.remove();
+ setTimeout(()=>URL.revokeObjectURL(u),1000);
+ toast('BA diunduh sebagai file HTML.');
+};
 ACT['ba-create']=async el=>{const r=await rpc('ba_create',{p_cycle:el.dataset.id});toast(r.existed?`BA sudah ada: ${r.ba_no}`:`BA dibuat: ${r.ba_no}`);const b=baState();b.open=r.id;state.validation.open=false;state.page='ba';await render()};
 ACT['ba-sign']=async el=>{const lv=el.dataset.level;if(!confirm(lv==='SPV'?'Tanda tangani BA ini sebagai SPV? Nama dan waktu Anda akan tercatat.':'Setujui BA ini sebagai Manager? Nama dan waktu Anda akan tercatat.'))return;await rpc('ba_sign',{p_ba:el.dataset.id,p_level:lv});toast('BA berhasil ditandatangani.');await render()};
 CHG['ba-adj']=async el=>{await rpc('ba_adjust',{p_ba:el.dataset.id,p_done:el.checked});toast(el.checked?'BA ditandai sudah di-adjust.':'Tanda adjust dibatalkan.');await render()};

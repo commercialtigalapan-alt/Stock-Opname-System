@@ -134,7 +134,7 @@ begin
  return r;
 end;$$;
 
--- Detail BA: header, ringkasan, dan daftar SKU yang selisih (urut selisih terbesar, maks 2000 baris).
+-- Detail BA: header, ringkasan, dan daftar SKU yang selisih (urut selisih terbesar, maks 300 baris).
 create or replace function public.tsi_so_ba_get(p_ba uuid)
 returns jsonb language plpgsql security definer set search_path = '' as $$
 declare b public.tsi_so_ba%rowtype; hdr jsonb; ln jsonb;
@@ -159,7 +159,7 @@ begin
   where s.cycle_id = b.cycle_id
     and coalesce(s.validated_qty, public.tsi_so_actual(s)) <> s.system_at_start
   order by abs(coalesce(s.validated_qty, public.tsi_so_actual(s)) - s.system_at_start) desc
-  limit 2000
+  limit 300
  ) l;
  return jsonb_build_object('header', hdr, 'summary', b.summary, 'lines', ln);
 end;$$;
