@@ -963,7 +963,7 @@ function drawValRows(){
  body.innerHTML=rows.map(r=>`<tr><td><b class="mono">${escapeHTML(r.no)}</b><br><small class="muted">${r.so_type==='PARTIAL'?'PARTIAL':'GRAND'}${r.archived?' • Diarsipkan':''}</small></td><td>${escapeHTML(r.store_name)}</td><td>${fmtDate(r.planned_date)}</td><td>${escapeHTML(r.pic||'-')}</td><td>${chip(r.status)}</td><td class="num">${n(r.scope_count)}</td><td class="num"><b>${P(valAcc(r))}</b><br><small class="muted">${n(r.variance||0)} variance</small></td><td>${btn('Validasi','val-open','primary',{id:r.id,store:r.store_code})}</td></tr>`).join('')||'<tr><td colspan="8" class="empty">Belum ada SO yang menunggu validasi.</td></tr>';
 }
 CHG['v-status']=el=>{state.validation.status=el.value;drawValRows()};
-ACT['val-open']=async el=>{const v=state.validation;v.cycle=el.dataset.id;v.open=true;v.offset=0;v.search='';v.filter='VARIANCE';state.store=el.dataset.store||state.store;await render()};
+ACT['val-open']=async el=>{state.page='validation';const v=state.validation;v.cycle=el.dataset.id;v.open=true;v.offset=0;v.search='';v.filter='VARIANCE';state.store=el.dataset.store||state.store;await render()};
 ACT['val-back']=async()=>{state.validation.open=false;state.validation.data=null;await render()};
 async function loadValidation(){
  const v=state.validation;
@@ -1028,6 +1028,7 @@ async function exportCombined(items){
  const blob=new Blob([text],{type:'text/csv;charset=utf-8'});const u=URL.createObjectURL(blob),a=document.createElement('a');
  a.href=u;a.download=items.length===1?`${String(items[0].no||'SO')}_${String(items[0].store||'').replace(/\s+/g,'_')}.csv`:`HASIL_SO_${iso(new Date())}_${items.length}SO.csv`;
  a.click();setTimeout(()=>URL.revokeObjectURL(u),2000);
+ await rpc('mark_exported',{p_cycles:items.map(i=>i.id)});
  return lines.length;
 }
 const exportItem=r=>({id:r.id,no:r.no,store:r.store_name,date:r.planned_date||'',type:r.so_type});
