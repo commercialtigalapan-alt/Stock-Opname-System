@@ -1113,3 +1113,5 @@ body{-webkit-font-smoothing:antialiased}
 .crow-bot{font-size:10px;margin-top:0;gap:4px}
 .crow-bot em{font-size:10px}
 @media (max-width:640px){.crow-grid{grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:5px}.crow .cname{font-size:11px}}
+.lg-link{background:none;border:0;color:#4338ca;font-weight:700;font-size:13px;cursor:pointer;align-self:flex-end;padding:0;margin:-4px 0 2px}
+.lg-link:hover{text-decoration:underline}
