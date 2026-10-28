@@ -1426,7 +1426,8 @@ function paintRowBusy(){
 // ===== Berita Acara (BA): approval berjenjang SPV lalu Manager, checklist adjust per BA =====
 const BA_MATCH={ALL:()=>true,WAIT_SPV:x=>!x.spv_at,WAIT_MGR:x=>!!x.spv_at&&!x.mgr_at,WAIT_ADJ:x=>!!x.mgr_at&&!x.adj_at,ADJUSTED:x=>!!x.adj_at,NOT_EXPORTED:x=>!x.exported_at};
 const BA_LABEL=[['ALL','Semua'],['WAIT_SPV','Menunggu SPV'],['WAIT_MGR','Menunggu Manager'],['WAIT_ADJ','Belum di-adjust'],['ADJUSTED','Sudah di-adjust'],['NOT_EXPORTED','Belum diekspor']];
-const baState=()=>state.ba||(state.ba={status:'ALL',open:null,all:[]});
+const baState=()=>state.ba||(state.ba={status:'ALL',store:'ALL',open:null,all:[]});
+const baFiltered=b=>(b.all||[]).filter(x=>(BA_MATCH[b.status]||BA_MATCH.ALL)(x)&&(b.store==='ALL'||x.store_code===b.store));
 const fmtDT=t=>t?new Date(t).toLocaleString('id-ID',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Makassar'})+' WITA':'—';
 async function showBA(){
  const b=baState();
@@ -1434,17 +1435,21 @@ async function showBA(){
  const all=await rpc('ba_list',{p_store:null,p_status:'ALL',p_limit:500});
  b.all=all;b.sel=b.sel||new Set();
  for(const id of [...b.sel])if(!all.some(x=>x.id===id))b.sel.delete(id);
- const rows=all.filter(BA_MATCH[b.status]||BA_MATCH.ALL);
+ const rows=baFiltered(b);
  const picked=all.filter(x=>b.sel.has(x.id));
+ const stores=[...new Map(all.map(x=>[x.store_code,x.store_name])).entries()];
+ const approvedInView=rows.filter(x=>x.mgr_at).length;
  const cleanable=picked.filter(x=>x.exported_at).length;
  const allOn=rows.length>0&&rows.every(x=>b.sel.has(x.id));
  $('#content').innerHTML=`<div class="card">
   <div class="card-head"><div><h3>Berita Acara SO</h3><p class="muted small">SPV menandatangani dahulu, lalu Manager menyetujui. Unduh BA gabungan untuk disimpan ke Google Drive, lalu bersihkan dari database.</p></div><span class="chip blue"><i></i>${n(all.length)} BA aktif</span></div>
-  <div class="ba-tabs">${BA_LABEL.map(([k,l])=>`<button class="tab ${b.status===k?'on':''}" data-act="ba-filter" data-k="${k}">${l} <b>${n(all.filter(BA_MATCH[k]).length)}</b></button>`).join('')}</div>
+  <div class="ba-tabs">${BA_LABEL.map(([k,l])=>`<button class="tab ${b.status===k?'on':''}" data-act="ba-filter" data-k="${k}">${l} <b>${n(all.filter(x=>BA_MATCH[k](x)&&(b.store==='ALL'||x.store_code===b.store)).length)}</b></button>`).join('')}</div>
+  <div class="ba-bulk no-print"><select class="input" data-change="ba-store"><option value="ALL">Semua toko</option>${stores.map(([c,nm])=>`<option value="${escapeHTML(c)}" ${b.store===c?'selected':''}>${escapeHTML(nm||c)}</option>`).join('')}</select></div>
   <div class="ba-bulk no-print">
    <span class="small muted">${n(picked.length)} BA dipilih</span>
    <button class="btn dark" data-act="ba-export-sel" ${picked.length?'':'disabled'}>Unduh gabungan (HTML)</button>
-   <button class="btn dark" data-act="ba-adj-csv-sel" ${picked.some(x=>x.mgr_at)?'':'disabled'}>Export CSV adjust (${n(picked.filter(x=>x.mgr_at).length)})</button>
+   <button class="btn dark" data-act="ba-adj-csv-sel" ${picked.some(x=>x.mgr_at)?'':'disabled'}>Export CSV adjust dipilih (${n(picked.filter(x=>x.mgr_at).length)})</button>
+   <button class="btn dark" data-act="ba-adj-csv-all" ${approvedInView?'':'disabled'}>Export CSV adjust semua di filter (${n(approvedInView)})</button>
    <button class="btn danger" data-act="ba-clean-sel" ${cleanable?'':'disabled'}>Bersihkan dari database (${n(cleanable)})</button>
   </div>
   <p class="small muted no-print">Alur: pilih BA → unduh gabungan dan simpan ke Google Drive → BA otomatis ditandai sudah diekspor → baru bisa dibersihkan.</p>
@@ -1517,9 +1522,10 @@ async function baDownload(ids){
  await rpc('ba_mark_exported',{p_bas:ids});
  toast(`${n(docs.length)} BA diunduh dan ditandai sudah diekspor.`);
 }
-// CSV adjust untuk Moka: hanya Item Name dan Qty Selisih (SKU yang selisih saja). Satu file per BA.
-function baAdjCsvText(d){
- const rows=[['Item Name','Qty Selisih'],...d.lines.map(l=>[l.item_name,l.diff_qty])];
+// CSV adjust untuk Moka: No BA, Item Name, Qty Selisih (hanya SKU yang selisih). Satu file gabungan.
+function baAdjCsvText(docs){
+ const rows=[['No BA','Item Name','Qty Selisih']];
+ docs.forEach(d=>d.lines.forEach(l=>rows.push([d.header.ba_no,l.item_name,l.diff_qty])));
  return '\uFEFF'+rows.map(r=>r.map(v=>typeof v==='number'?String(v):'"'+String(v??'').replaceAll('"','""')+'"').join(',')).join('\r\n');
 }
 function baSaveFile(text,fname,type){
@@ -1528,21 +1534,22 @@ function baSaveFile(text,fname,type){
  setTimeout(()=>URL.revokeObjectURL(u),2000);
 }
 async function baAdjCsv(ids){
- if(!ids.length){toast('Pilih BA yang sudah disetujui Manager.',true);return}
+ if(!ids.length){toast('Tidak ada BA yang sudah disetujui Manager pada pilihan ini.',true);return}
  const docs=await rpc('ba_export',{p_bas:ids});
- for(const d of docs){
-  const fname='ADJ_'+d.header.ba_no.replace(/[\/\\]+/g,'-')+'.csv';
-  baSaveFile(baAdjCsvText(d),fname,'text/csv;charset=utf-8');
- }
- toast(`${n(docs.length)} file CSV adjust diunduh.`);
+ const rowsN=docs.reduce((t,d)=>t+d.lines.length,0);
+ const fname=docs.length===1?'ADJ_'+docs[0].header.ba_no.replace(/[\/\\]+/g,'-')+'.csv':`ADJ_GABUNGAN_${iso(new Date())}_${docs.length}BA.csv`;
+ baSaveFile(baAdjCsvText(docs),fname,'text/csv;charset=utf-8');
+ toast(`CSV adjust diunduh: ${n(docs.length)} BA, ${n(rowsN)} baris selisih.`);
 }
 ACT['ba-adj-csv']=async()=>{await baAdjCsv([baState().open])};
 ACT['ba-adj-csv-sel']=async()=>{const b=baState();const ids=(b.all||[]).filter(x=>b.sel.has(x.id)&&x.mgr_at).map(x=>x.id);await baAdjCsv(ids)};
+ACT['ba-adj-csv-all']=async()=>{const b=baState();await baAdjCsv(baFiltered(b).filter(x=>x.mgr_at).map(x=>x.id))};
 ACT['ba-download']=async()=>{await baDownload([baState().open]);await render()};
 ACT['ba-export-sel']=async()=>{const b=baState();await baDownload([...b.sel]);await render()};
 ACT['ba-clean-sel']=async()=>{const b=baState();const ids=(b.all||[]).filter(x=>b.sel.has(x.id)&&x.exported_at).map(x=>x.id);if(!ids.length)return toast('Pilih BA yang sudah diekspor.',true);if(!confirm(`Bersihkan ${ids.length} BA dari database?\n\nPastikan file sudah tersimpan di Google Drive. Setelah dibersihkan, detail BA tidak bisa dibuka lagi di aplikasi.`))return;const k=await rpc('ba_clean',{p_bas:ids});b.sel.clear();toast(`${n(k)} BA dibersihkan dari database.`);await render()};
 CHG['ba-pick']=async el=>{const b=baState();b.sel=b.sel||new Set();el.checked?b.sel.add(el.dataset.id):b.sel.delete(el.dataset.id);await render()};
-CHG['ba-pick-all']=async el=>{const b=baState();b.sel=b.sel||new Set();(b.all||[]).filter(BA_MATCH[b.status]||BA_MATCH.ALL).forEach(x=>el.checked?b.sel.add(x.id):b.sel.delete(x.id));await render()};
+CHG['ba-pick-all']=async el=>{const b=baState();b.sel=b.sel||new Set();baFiltered(b).forEach(x=>el.checked?b.sel.add(x.id):b.sel.delete(x.id));await render()};
+CHG['ba-store']=async el=>{const b=baState();b.store=el.value;await render()};
 
 ACT['ba-create']=async el=>{const r=await rpc('ba_create',{p_cycle:el.dataset.id});toast(r.existed?`BA sudah ada: ${r.ba_no}`:`BA dibuat: ${r.ba_no}`);const b=baState();b.open=r.id;state.validation.open=false;state.page='ba';await render()};
 ACT['ba-sign']=async el=>{const lv=el.dataset.level;if(!confirm(lv==='SPV'?'Tanda tangani BA ini sebagai SPV? Nama dan waktu Anda akan tercatat.':'Setujui BA ini sebagai Manager? Nama dan waktu Anda akan tercatat.'))return;await rpc('ba_sign',{p_ba:el.dataset.id,p_level:lv});toast('BA berhasil ditandatangani.');await render()};
