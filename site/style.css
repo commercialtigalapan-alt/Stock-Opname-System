@@ -1103,3 +1103,13 @@ body{-webkit-font-smoothing:antialiased}
  .sec-title{font-size:14px;margin:16px 0 8px}
 }
 .vol.o,.vol.g,.vol.a,.vol.r{border-top:1px solid #eef2ff}
+
+/* ===== v11: kotak warna lebih ringkas ===== */
+.crow-grid{grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:6px}
+.crow{padding:5px 8px;min-height:0;gap:3px;border-radius:9px}
+.crow-top{gap:5px}
+.crow-top input{width:13px;height:13px;margin-top:1px}
+.crow .cname{font-size:11.5px;font-weight:800;line-height:1.2}
+.crow-bot{font-size:10px;margin-top:0;gap:4px}
+.crow-bot em{font-size:10px}
+@media (max-width:640px){.crow-grid{grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:5px}.crow .cname{font-size:11px}}
