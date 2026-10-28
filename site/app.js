@@ -155,7 +155,7 @@ function rangeControlHTML(p,r){
  }else if(r.kind==='custom'){
   extra=`<input class="input" type="date" value="${escapeHTML(r.from)}" data-change="rng" data-p="${p}" data-f="from" aria-label="Tanggal awal"/><span class="muted small">s/d</span><input class="input" type="date" value="${escapeHTML(r.to)}" data-change="rng" data-p="${p}" data-f="to" aria-label="Tanggal akhir"/>`;
  }
- return `<div class="range-ctl"><select class="input select" data-change="rng" data-p="${p}" data-f="kind">${Object.entries(RANGE_LABEL).map(([v,l])=>`<option value="${v}" ${r.kind===v?'selected':''}>${l}</option>`).join('')}</select>${extra}<span class="range-sum small muted">${escapeHTML(rangeSummary(r))}</span>${r.kind!=='all'?`<button class="btn ghost sm" data-act="rng-clear" data-p="${p}">✕</button>`:''}${rstHTML(p)}</div>`;
+ return `<div class="range-ctl"><select class="input select" data-change="rng" data-p="${p}" data-f="kind">${Object.entries(RANGE_LABEL).map(([v,l])=>`<option value="${v}" ${r.kind===v?'selected':''}>${l}</option>`).join('')}</select>${extra}<span class="range-sum small muted">${escapeHTML(rangeSummary(r))}</span>${rstHTML(p)}</div>`;
 }
 const rangeOf=p=>p==='dash'?state.dash.range:p==='exp'?state.exp.range:state.sch.range;
 const rangeRefresh=p=>p==='dash'?showDashboard():p==='exp'?showExport():showSchedule();
@@ -368,7 +368,6 @@ async function showDashboard(){
    <select class="input select" data-change="dash-filter" id="dStore">${storeOptions(d.store,true)}</select>
    <select class="input select" data-change="dash-filter" id="dType"><option value="">Semua Jenis SO</option><option value="GRAND" ${d.type==='GRAND'?'selected':''}>Grand SO</option><option value="PARTIAL" ${d.type==='PARTIAL'?'selected':''}>Partial SO</option></select>
    ${rangeControlHTML('dash',d.range)}
-   ${(d.store||d.type||d.range.kind!=='all')?'<button class="btn ghost sm" data-act="dash-reset">✕ Clear</button>':''}
   </div>
  </div>
  <div class="card tabs-card"><span class="tabs-lbl">ANALISA</span>${tabs.map(([id,l])=>`<button class="tab ${d.tab===id?'on':''}" data-act="dash-tab" data-tab="${id}">${l}</button>`).join('')}</div>
@@ -1341,7 +1340,7 @@ async function showCoverage(){
  <div class="card filter-card"><div class="filters">
    ${state.me.role!=='store'?`<select class="input select" data-change="cov-store">${storeOptions(c.store,false)}</select>`:`<span class="chip blue">${escapeHTML(labelStore(c.store))}</span>`}
    <input id="covSearch" class="input grow" placeholder="Cari SKU / nama item" value="${escapeHTML(c.search)}"/>
-   ${btn('Cari','cov-find','outline')}${(c.search||c.filter!=='ALL')?'<button class="btn ghost sm" data-act="cov-clear">✕ Clear</button>':''}
+   ${btn('Cari','cov-find','outline')}${rstHTML('cov')}
   </div>
   <div class="note info">Aturan: setiap SKU harus ter-SO sekali dulu. SKU yang sudah ter-SO tidak bisa dipilih sampai semua SKU lain naik ke rasio yang sama. Rasio = jumlah SO selesai yang memuat SKU itu.</div></div>
  <div class="mini-row">
@@ -1352,7 +1351,7 @@ async function showCoverage(){
    ${mini('r','Terkunci',n(s2.terkunci),'Menunggu SKU lain naik rasio')}
  </div>
  <div class="card">
-  <div class="seg">${filters.map(([v,l])=>`<button class="${c.filter===v?'on':''}" data-act="cov-filter" data-v="${v}">${l}</button>`).join('')}${rstHTML('cov')}</div>
+  <div class="seg">${filters.map(([v,l])=>`<button class="${c.filter===v?'on':''}" data-act="cov-filter" data-v="${v}">${l}</button>`).join('')}</div>
   <div class="tablewrap" style="margin-top:10px"><table class="cov-table"><thead><tr><th>Item & Warna</th><th>SKU</th><th class="num">Rasio</th><th>Status</th><th>Pemilihan</th></tr></thead><tbody>
   ${(d.items||[]).map(x=>`<tr><td class="nm">${nameBadge(x.name,x.category)}</td><td class="mono">${escapeHTML(x.sku)}</td><td class="num"><span class="ratio ${x.ratio?'r1':'r0'}">${n(x.ratio)}x</span></td><td>${x.status==='SUDAH'?chip('TALLY','SUDAH SO'):chip('BELUM','BELUM SO')}</td><td>${x.eligible?'<span class="chip blue"><i></i>Bisa dipilih</span>':'<span class="chip red"><i></i>Terkunci</span>'}</td></tr>`).join('')||'<tr><td colspan="5" class="empty">Tidak ada SKU pada filter ini.</td></tr>'}
   </tbody></table></div>
