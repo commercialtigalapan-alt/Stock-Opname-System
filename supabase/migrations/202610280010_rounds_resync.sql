@@ -13,7 +13,7 @@ begin
 
  create temp table if not exists _rr_new(sku text primary key, n int) on commit drop;
  create temp table if not exists _rr_old(sku text primary key, n int) on commit drop;
- delete from _rr_new; delete from _rr_old;
+ delete from _rr_new where true; delete from _rr_old where true;
  -- rasio yang benar: jumlah SO (submit) yang masih punya detail, per SKU
  insert into _rr_new select l.sku, count(distinct c.id)::int
   from public.tsi_so_cycles c join public.tsi_so_lines l on l.cycle_id=c.id
