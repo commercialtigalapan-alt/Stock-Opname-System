@@ -1444,6 +1444,7 @@ async function showBA(){
   <div class="ba-bulk no-print">
    <span class="small muted">${n(picked.length)} BA dipilih</span>
    <button class="btn dark" data-act="ba-export-sel" ${picked.length?'':'disabled'}>Unduh gabungan (HTML)</button>
+   <button class="btn dark" data-act="ba-adj-csv-sel" ${picked.some(x=>x.mgr_at)?'':'disabled'}>Export CSV adjust (${n(picked.filter(x=>x.mgr_at).length)})</button>
    <button class="btn danger" data-act="ba-clean-sel" ${cleanable?'':'disabled'}>Bersihkan dari database (${n(cleanable)})</button>
   </div>
   <p class="small muted no-print">Alur: pilih BA → unduh gabungan dan simpan ke Google Drive → BA otomatis ditandai sudah diekspor → baru bisa dibersihkan.</p>
@@ -1493,7 +1494,7 @@ async function loadBADetail(){
  $('#content').innerHTML=`<div class="crumb no-print"><button class="btn ghost" data-act="ba-back">← Daftar BA</button></div>
  <div class="card ba-actions no-print">
   <div class="row"><b class="mono">${escapeHTML(h.ba_no)}</b>${h.adj_at?chip('TALLY','Sudah di-adjust'):chip('SUBMITTED',h.mgr_at?'Siap di-adjust':(h.spv_at?'Menunggu Manager':'Menunggu SPV'))}</div>
-  <div class="row">${canSpv?btn('Tanda tangan SPV','ba-sign','primary',{id:h.id,level:'SPV'}):''}${canMgr?btn('Setujui Manager','ba-sign','dark',{id:h.id,level:'MGR'}):''}${btn('Unduh HTML','ba-download','ghost')}${btn('Cetak / PDF','ba-print','ghost')}</div>
+  <div class="row">${canSpv?btn('Tanda tangan SPV','ba-sign','primary',{id:h.id,level:'SPV'}):''}${canMgr?btn('Setujui Manager','ba-sign','dark',{id:h.id,level:'MGR'}):''}${h.mgr_at?btn('Export CSV Adjust','ba-adj-csv','dark'):''}${btn('Unduh HTML','ba-download','ghost')}${btn('Cetak / PDF','ba-print','ghost')}</div>
  </div>
  ${baArticle(h,s,lines,total,false)}`;
 }
@@ -1516,6 +1517,27 @@ async function baDownload(ids){
  await rpc('ba_mark_exported',{p_bas:ids});
  toast(`${n(docs.length)} BA diunduh dan ditandai sudah diekspor.`);
 }
+// CSV adjust untuk Moka: hanya Item Name dan Qty Selisih (SKU yang selisih saja). Satu file per BA.
+function baAdjCsvText(d){
+ const rows=[['Item Name','Qty Selisih'],...d.lines.map(l=>[l.item_name,l.diff_qty])];
+ return '\uFEFF'+rows.map(r=>r.map(v=>typeof v==='number'?String(v):'"'+String(v??'').replaceAll('"','""')+'"').join(',')).join('\r\n');
+}
+function baSaveFile(text,fname,type){
+ const u=URL.createObjectURL(new Blob([text],{type}));
+ const a=document.createElement('a');a.href=u;a.download=fname;document.body.appendChild(a);a.click();a.remove();
+ setTimeout(()=>URL.revokeObjectURL(u),2000);
+}
+async function baAdjCsv(ids){
+ if(!ids.length){toast('Pilih BA yang sudah disetujui Manager.',true);return}
+ const docs=await rpc('ba_export',{p_bas:ids});
+ for(const d of docs){
+  const fname='ADJ_'+d.header.ba_no.replace(/[\/\\]+/g,'-')+'.csv';
+  baSaveFile(baAdjCsvText(d),fname,'text/csv;charset=utf-8');
+ }
+ toast(`${n(docs.length)} file CSV adjust diunduh.`);
+}
+ACT['ba-adj-csv']=async()=>{await baAdjCsv([baState().open])};
+ACT['ba-adj-csv-sel']=async()=>{const b=baState();const ids=(b.all||[]).filter(x=>b.sel.has(x.id)&&x.mgr_at).map(x=>x.id);await baAdjCsv(ids)};
 ACT['ba-download']=async()=>{await baDownload([baState().open]);await render()};
 ACT['ba-export-sel']=async()=>{const b=baState();await baDownload([...b.sel]);await render()};
 ACT['ba-clean-sel']=async()=>{const b=baState();const ids=(b.all||[]).filter(x=>b.sel.has(x.id)&&x.exported_at).map(x=>x.id);if(!ids.length)return toast('Pilih BA yang sudah diekspor.',true);if(!confirm(`Bersihkan ${ids.length} BA dari database?\n\nPastikan file sudah tersimpan di Google Drive. Setelah dibersihkan, detail BA tidak bisa dibuka lagi di aplikasi.`))return;const k=await rpc('ba_clean',{p_bas:ids});b.sel.clear();toast(`${n(k)} BA dibersihkan dari database.`);await render()};
