@@ -1437,28 +1437,26 @@ async function showBA(){
  for(const id of [...b.sel])if(!all.some(x=>x.id===id))b.sel.delete(id);
  const rows=baFiltered(b);
  const picked=all.filter(x=>b.sel.has(x.id));
+ const useSel=picked.length>0;
+ const scope=useSel?picked:rows;
+ const cnt={html:scope.length,csv:scope.filter(x=>x.mgr_at).length,mark:scope.filter(x=>x.mgr_at&&!x.adj_at).length,clean:picked.filter(x=>x.exported_at).length,unmark:picked.filter(x=>x.adj_at).length};
  const stores=[...new Map(all.map(x=>[x.store_code,x.store_name])).entries()];
- const approvedInView=rows.filter(x=>x.mgr_at).length;
- const markSel=picked.filter(x=>x.mgr_at&&!x.adj_at).length;
- const unmarkSel=picked.filter(x=>x.adj_at).length;
- const markAll=rows.filter(x=>x.mgr_at&&!x.adj_at).length;
- const cleanable=picked.filter(x=>x.exported_at).length;
  const allOn=rows.length>0&&rows.every(x=>b.sel.has(x.id));
+ const act=(lbl,k,c,kind)=>`<button class="btn ${kind}" data-act="ba-run" data-do="${k}" ${c?'':'disabled'}>${lbl} (${n(c)})</button>`;
  $('#content').innerHTML=`<div class="card">
-  <div class="card-head"><div><h3>Berita Acara SO</h3><p class="muted small">SPV menandatangani dahulu, lalu Manager menyetujui. Unduh BA gabungan untuk disimpan ke Google Drive, lalu bersihkan dari database.</p></div><span class="chip blue"><i></i>${n(all.length)} BA aktif</span></div>
+  <div class="card-head"><div><h3>Berita Acara SO</h3><p class="muted small">SPV menandatangani dahulu, lalu Manager menyetujui. Unduh untuk Drive, export CSV untuk Moka, lalu bersihkan dari database.</p></div><span class="chip blue"><i></i>${n(all.length)} BA aktif</span></div>
   <div class="ba-tabs">${BA_LABEL.map(([k,l])=>`<button class="tab ${b.status===k?'on':''}" data-act="ba-filter" data-k="${k}">${l} <b>${n(all.filter(x=>BA_MATCH[k](x)&&(b.store==='ALL'||x.store_code===b.store)).length)}</b></button>`).join('')}</div>
   <div class="ba-bulk no-print"><select class="input" data-change="ba-store"><option value="ALL">Semua toko</option>${stores.map(([c,nm])=>`<option value="${escapeHTML(c)}" ${b.store===c?'selected':''}>${escapeHTML(nm||c)}</option>`).join('')}</select></div>
-  <div class="ba-bulk no-print">
-   <span class="small muted">${n(picked.length)} BA dipilih</span>
-   <button class="btn dark" data-act="ba-export-sel" ${picked.length?'':'disabled'}>Unduh gabungan (HTML)</button>
-   <button class="btn dark" data-act="ba-adj-csv-sel" ${picked.some(x=>x.mgr_at)?'':'disabled'}>Export CSV adjust dipilih (${n(picked.filter(x=>x.mgr_at).length)})</button>
-   <button class="btn dark" data-act="ba-adj-csv-all" ${approvedInView?'':'disabled'}>Export CSV adjust semua di filter (${n(approvedInView)})</button>
-   <button class="btn primary" data-act="ba-mark" data-done="1" ${markSel?'':'disabled'}>Tandai adjust dipilih (${n(markSel)})</button>
-   <button class="btn" data-act="ba-mark" data-done="0" ${unmarkSel?'':'disabled'}>Batalkan tanda (${n(unmarkSel)})</button>
-   <button class="btn primary" data-act="ba-mark-all" ${markAll?'':'disabled'}>Tandai adjust semua di filter (${n(markAll)})</button>
-   <button class="btn danger" data-act="ba-clean-sel" ${cleanable?'':'disabled'}>Bersihkan dari database (${n(cleanable)})</button>
+  <div class="ba-bar no-print">
+   <div class="ba-scope"><div><b>Berlaku untuk:</b> ${useSel?`${n(picked.length)} BA yang dipilih`:`semua ${n(rows.length)} BA di filter ini`}${useSel?`<button class="btn ghost sm" data-act="ba-clear-sel">Kosongkan pilihan</button>`:''}</div><small class="muted">Centang BA untuk memilih sebagian. Tanpa centang, aksi berlaku untuk semua BA di filter.</small></div>
+   <div class="ba-acts">
+    ${act('Unduh HTML gabungan','html',cnt.html,'dark')}
+    ${act('Export CSV adjust','csv',cnt.csv,'dark')}
+    ${act('Tandai adjust','mark',cnt.mark,'primary')}
+    ${useSel&&cnt.unmark?act('Batalkan tanda','unmark',cnt.unmark,'ghost'):''}
+    ${useSel?act('Bersihkan dari database','clean',cnt.clean,'danger'):''}
+   </div>
   </div>
-  <p class="small muted no-print">Alur: pilih BA → unduh gabungan dan simpan ke Google Drive → BA otomatis ditandai sudah diekspor → baru bisa dibersihkan.</p>
   <div class="tablewrap"><table><thead><tr><th><input type="checkbox" data-change="ba-pick-all" ${allOn?'checked':''}/></th><th>No BA</th><th>Toko</th><th>Dibuat</th><th>SPV</th><th>Manager</th><th>Adjust</th><th>Export</th><th>Aksi</th></tr></thead><tbody>
   ${rows.map(x=>`<tr>
    <td><input type="checkbox" data-change="ba-pick" data-id="${escapeHTML(x.id)}" ${b.sel.has(x.id)?'checked':''}/></td>
@@ -1548,18 +1546,37 @@ async function baAdjCsv(ids){
  toast(`CSV adjust diunduh: ${n(docs.length)} BA, ${n(rowsN)} baris selisih.`);
 }
 ACT['ba-adj-csv']=async()=>{await baAdjCsv([baState().open])};
-ACT['ba-adj-csv-sel']=async()=>{const b=baState();const ids=(b.all||[]).filter(x=>b.sel.has(x.id)&&x.mgr_at).map(x=>x.id);await baAdjCsv(ids)};
 async function baMark(ids,done){
  if(!ids.length){toast('Tidak ada BA yang bisa diproses.',true);return}
  const r=await rpc('ba_adjust_bulk',{p_bas:ids,p_done:done});
  toast(`${n(r.done)} BA ${done?'ditandai sudah di-adjust':'tanda adjust dibatalkan'}${r.skipped?` (${n(r.skipped)} dilewati)`:''}.`);
 }
-ACT['ba-mark']=async el=>{const b=baState();const done=el.dataset.done==='1';const ids=(b.all||[]).filter(x=>b.sel.has(x.id)&&x.mgr_at&&(done?!x.adj_at:!!x.adj_at)).map(x=>x.id);await baMark(ids,done);await render()};
-ACT['ba-mark-all']=async()=>{const b=baState();const ids=baFiltered(b).filter(x=>x.mgr_at&&!x.adj_at).map(x=>x.id);if(!confirm(`Tandai ${n(ids.length)} BA sebagai sudah di-adjust?`))return;await baMark(ids,true);await render()};
-ACT['ba-adj-csv-all']=async()=>{const b=baState();await baAdjCsv(baFiltered(b).filter(x=>x.mgr_at).map(x=>x.id))};
 ACT['ba-download']=async()=>{await baDownload([baState().open]);await render()};
-ACT['ba-export-sel']=async()=>{const b=baState();await baDownload([...b.sel]);await render()};
-ACT['ba-clean-sel']=async()=>{const b=baState();const ids=(b.all||[]).filter(x=>b.sel.has(x.id)&&x.exported_at).map(x=>x.id);if(!ids.length)return toast('Pilih BA yang sudah diekspor.',true);if(!confirm(`Bersihkan ${ids.length} BA dari database?\n\nPastikan file sudah tersimpan di Google Drive. Setelah dibersihkan, detail BA tidak bisa dibuka lagi di aplikasi.`))return;const k=await rpc('ba_clean',{p_bas:ids});b.sel.clear();toast(`${n(k)} BA dibersihkan dari database.`);await render()};
+// Satu pintu untuk semua aksi massal. Cakupan: BA yang dicentang, atau semua BA di filter bila tidak ada centang.
+ACT['ba-run']=async el=>{
+ const b=baState();const k=el.dataset.do;
+ const picked=(b.all||[]).filter(x=>b.sel.has(x.id));
+ const scope=picked.length?picked:baFiltered(b);
+ if(k==='html'){
+  if(!picked.length&&!confirm(`Unduh ${n(scope.length)} BA dalam satu file dan tandai sudah diekspor?`))return;
+  await baDownload(scope.map(x=>x.id));
+ }else if(k==='csv'){
+  await baAdjCsv(scope.filter(x=>x.mgr_at).map(x=>x.id));
+ }else if(k==='mark'){
+  const ids=scope.filter(x=>x.mgr_at&&!x.adj_at).map(x=>x.id);
+  if(!picked.length&&!confirm(`Tandai ${n(ids.length)} BA sebagai sudah di-adjust?`))return;
+  await baMark(ids,true);
+ }else if(k==='unmark'){
+  await baMark(picked.filter(x=>x.adj_at).map(x=>x.id),false);
+ }else if(k==='clean'){
+  const ids=picked.filter(x=>x.exported_at).map(x=>x.id);
+  if(!ids.length)return toast('Pilih BA yang sudah diekspor.',true);
+  if(!confirm(`Bersihkan ${n(ids.length)} BA dari database?\n\nPastikan file sudah tersimpan di Google Drive. Setelah dibersihkan, detail BA tidak bisa dibuka lagi di aplikasi.`))return;
+  const c=await rpc('ba_clean',{p_bas:ids});b.sel.clear();toast(`${n(c)} BA dibersihkan dari database.`);
+ }
+ await render();
+};
+ACT['ba-clear-sel']=async()=>{baState().sel.clear();await render()};
 CHG['ba-pick']=async el=>{const b=baState();b.sel=b.sel||new Set();el.checked?b.sel.add(el.dataset.id):b.sel.delete(el.dataset.id);await render()};
 CHG['ba-pick-all']=async el=>{const b=baState();b.sel=b.sel||new Set();baFiltered(b).forEach(x=>el.checked?b.sel.add(x.id):b.sel.delete(x.id));await render()};
 CHG['ba-store']=async el=>{const b=baState();b.store=el.value;await render()};

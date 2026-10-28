@@ -1030,3 +1030,15 @@ body{font-size:13.5px;background:radial-gradient(900px 420px at 100% -10%,#fde4c
 .ba-bulk{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:4px 0 6px}
 .ba-bulk .btn[disabled]{opacity:.45;cursor:not-allowed}
 @media print{.ba-page{break-after:page}}
+
+/* ===== v9: bilah aksi BA terpadu ===== */
+.ba-bar{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-start;gap:12px;background:#faf5ff;border:1px solid #e9d5ff;border-radius:14px;padding:12px 14px;margin:8px 0 12px}
+.ba-scope{display:flex;flex-direction:column;gap:4px;font-size:13px;min-width:0}
+.ba-scope small{font-size:11.5px}
+.ba-acts{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.ba-acts .btn[disabled]{opacity:.45;cursor:not-allowed}
+@media (max-width:640px){.ba-bar{flex-direction:column}.ba-acts .btn{flex:1 1 auto}}
+.ba-scope>div{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ba-bulk .input{max-width:280px}
+.ba-scope>div{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ba-bulk .input{max-width:280px}
