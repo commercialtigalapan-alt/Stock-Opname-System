@@ -1545,9 +1545,15 @@ async function baDownload(ids){
  toast(`${n(docs.length)} BA diunduh dan ditandai sudah diekspor.`);
 }
 // CSV adjust untuk Moka: No BA, Item Name, Qty Selisih (hanya SKU yang selisih). Satu file gabungan.
+function baAdjNote(h){
+ const d=new Date(h.created_at);
+ const p=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Makassar',day:'2-digit',month:'2-digit',year:'numeric'}).formatToParts(d);
+ const g=t=>p.find(x=>x.type===t)?.value||'';
+ return `ADJ SO.P ${String(h.store_code||'').replace(/-/g,' ')} ${g('day')}/${g('month')}/${g('year')}`;
+}
 function baAdjCsvText(docs){
- const rows=[['No BA','Item Name','Qty Selisih']];
- docs.forEach(d=>d.lines.forEach(l=>rows.push([d.header.ba_no,l.item_name,l.diff_qty])));
+ const rows=[['No BA','Item Name','Qty Selisih','Note']];
+ docs.forEach(d=>{const note=baAdjNote(d.header);d.lines.forEach(l=>rows.push([d.header.ba_no,l.item_name,l.diff_qty,note]))});
  return '\uFEFF'+rows.map(r=>r.map(v=>typeof v==='number'?String(v):'"'+String(v??'').replaceAll('"','""')+'"').join(',')).join('\r\n');
 }
 function baSaveFile(text,fname,type){
