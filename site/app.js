@@ -208,13 +208,24 @@ function shell(){
  </aside>
  <main class="main">
   <header class="topbar"><div class="titles"><h1 id="topTitle"></h1><p id="topSubtitle"></p></div>
-   <div class="top-actions"><span class="sys" id="sysPill"><i></i>System Online</span><button class="btn pill" data-act="refresh">↻ Refresh</button><button class="btn pill ghost" data-act="logout">Keluar</button></div>
+   <div class="top-actions"><span class="sys" id="sysPill"><i></i>System Online</span><button class="btn pill" data-act="refresh" title="Muat ulang data dari server">↻ Refresh</button><button class="btn pill ghost" data-act="app-reset" title="Muat ulang seluruh aplikasi">⟲ Reset</button><button class="btn pill ghost" data-act="logout">Keluar</button></div>
   </header>
   <div class="content" id="content"></div>
  </main></section>`);
  $('#collapseBtn').onclick=()=>$('#app').classList.toggle('collapsed');
 }
-ACT['refresh']=async()=>{await refreshDashboard();await render()};
+// Refresh: bersihkan cache di memori, muat ulang profil, toko, dan dashboard dari server
+async function softRefresh(){
+ state.builder=null;
+ if(state.validation)state.validation.data=null;
+ if(state.cov)state.cov.data=null;
+ if(state.count)state.count.data=null;
+ const me=await rpc('me');state.me=me;state.stores=me.stores||[];
+ if(!state.stores.some(x=>x.code===state.store))state.store=me.store_code||state.stores[0]?.code||'';
+ await refreshDashboard();
+}
+ACT['refresh']=async()=>{try{await softRefresh();await render();toast('Data diperbarui dari server')}catch(ex){toast(ex.message,true)}};
+ACT['app-reset']=()=>{location.reload()};
 ACT['logout']=async()=>{await sb.auth.signOut();loginView()};
 function updateNav(){const el=$('#nav');if(!el)return;let last='',html='';const b=state.badges;
  for(const [id,title,icon,section] of menu()){
@@ -1139,6 +1150,10 @@ async function showAdmin(){
    <div class="tablewrap"><table><thead><tr><th>Toko</th><th>Area</th><th>SPV</th></tr></thead><tbody>${map.map(x=>{const areaOpts=[...new Set([...SPV_AREAS,...(x.area?[x.area]:[])])];return `<tr><td><b>${escapeHTML(x.name)}</b><br><small class="mono muted">${escapeHTML(x.code)}</small></td>
     <td><select class="input select" data-change="map-area" data-store="${escapeHTML(x.code)}"><option value="">— Pilih area —</option>${areaOpts.map(a=>`<option value="${escapeHTML(a)}" ${a===x.area?'selected':''}>${escapeHTML(a)}</option>`).join('')}</select></td>
     <td><select class="input select" data-change="map-spv" data-store="${escapeHTML(x.code)}"><option value="">— Belum ada SPV —</option>${spvs.map(s=>`<option value="${escapeHTML(s.id)}" ${s.id===x.spv_user?'selected':''}>${escapeHTML(s.name||s.email)}</option>`).join('')}</select></td></tr>`}).join('')||'<tr><td colspan="3" class="empty">Belum ada toko.</td></tr>'}</tbody></table></div></div>
+  ${isAdmin()?`<div class="card"><div class="card-head"><h3>4. Pembersihan Database</h3><span class="muted small">Membersihkan data sampah agar aplikasi tetap ringan</span></div>
+   <p class="small muted">Tidak menghapus SO, detail SO, atau inventory aktif. Hanya menghapus rasio nol, audit lama, dan upload yang sudah tidak dipakai.</p>
+   <div class="toolbar"><label class="small">Audit lebih tua dari (hari)<input class="input" id="clnAudit" type="number" min="30" value="365" style="width:110px"/></label><label class="small">Upload tak terpakai lebih tua dari (hari)<input class="input" id="clnUpload" type="number" min="1" value="30" style="width:110px"/></label>${btn('Pindai Sampah','cln-scan','outline')}${btn('Bersihkan Sekarang','cln-run','danger')}${btn('Bersihkan Draft Browser','cln-browser','dark')}</div>
+   <div id="clnOut" class="note info small">Klik Pindai Sampah untuk melihat jumlah data yang bisa dibersihkan.</div></div>`:''}
   <div class="card" id="auditCard"></div>`;
  loadAudit().catch(()=>{});
 }
@@ -1202,3 +1217,22 @@ ACT['cov-find']=async()=>{const c=state.cov;c.search=$('#covSearch').value.trim(
 ACT['cov-clear']=async()=>{const c=state.cov;c.search='';c.filter='ALL';c.offset=0;await showCoverage()};
 ACT['cov-prev']=async()=>{const c=state.cov;c.offset=Math.max(0,c.offset-50);await showCoverage()};
 ACT['cov-next']=async()=>{const c=state.cov;if(!c.data||c.offset+50>=c.data.total_filtered)return;c.offset+=50;await showCoverage()};
+
+/* ---------- Pembersihan Database (Admin) ---------- */
+const clnParams=()=>({p_audit_days:Math.max(1,Number($('#clnAudit')?.value)||365),p_upload_days:Math.max(1,Number($('#clnUpload')?.value)||30)});
+const clnText=d=>`Rasio nol: ${n(d.zero_rounds)} · Audit lama: ${n(d.old_audit)} · Upload tak terpakai: ${n(d.stale_uploads)}`;
+ACT['cln-scan']=async()=>{const d=await rpc('cleanup_scan',clnParams());$('#clnOut').textContent='Bisa dibersihkan — '+clnText(d)};
+ACT['cln-run']=async()=>{
+ if(!confirm('Bersihkan data sampah sekarang? SO, detail SO, dan inventory aktif tidak ikut terhapus.'))return;
+ const d=await rpc('cleanup_run',clnParams());toast('Pembersihan selesai');
+ $('#clnOut').textContent='Sudah dibersihkan — '+clnText(d);
+};
+ACT['cln-browser']=async()=>{
+ const active=new Set((state.dashboard||[]).map(x=>x.cycle_id).filter(Boolean));
+ let removed=0;
+ try{
+  Object.keys(localStorage).filter(k=>k.startsWith('tsiSO_draft_')).forEach(k=>{
+   const cid=k.slice('tsiSO_draft_'.length);if(!active.has(cid)){localStorage.removeItem(k);removed++}});
+ }catch(e){}
+ toast(`Draft browser dibersihkan: ${n(removed)} item`);
+};
