@@ -875,3 +875,78 @@ body{font-size:13.5px;background:radial-gradient(900px 420px at 100% -10%,#fde4c
 .row-busy td{background:#fff7ed!important}
 .row-busy td.nm{box-shadow:inset 4px 0 0 #f97316}
 .busy-tag{display:inline-flex;align-items:center;margin-left:8px;margin-top:4px;padding:2px 8px;border-radius:99px;background:#fef3c7;color:#92400e;font-size:11px;font-weight:700;white-space:nowrap}
+
+/* ===== v6: proporsi sidebar & responsif (desktop / tablet / HP) ===== */
+/* Desktop: sidebar lebar tetap, header brand rapi */
+.app{grid-template-columns:236px minmax(0,1fr)}
+.app.collapsed{grid-template-columns:84px minmax(0,1fr)}
+.sidebar{padding:14px 12px;gap:12px}
+.side-head{padding:10px 10px 10px 12px;gap:6px}
+.brand-card{min-width:0;gap:9px}
+.brand-text{min-width:0}
+.brand-text strong{white-space:nowrap}
+.brand-text small{letter-spacing:.08em;line-height:1.25}
+.collapse{width:28px;height:28px;flex:none}
+.nav{gap:3px}
+.nav button{padding:9px 12px;font-size:13px;gap:10px;position:relative}
+.nav .ico{width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;font-size:15px;flex:none}
+.nav-sec{margin:12px 10px 4px}
+
+/* Sidebar mode ringkas (collapsed): ikon di tengah, avatar presence di pojok ikon */
+.app.collapsed .side-head{flex-direction:column;align-items:center;padding:8px 6px;gap:8px}
+.app.collapsed .brand-card{justify-content:center}
+.app.collapsed .logo-img{width:36px;height:36px;padding:2px}
+.app.collapsed .collapse{width:100%;height:24px}
+.app.collapsed .nav button{justify-content:center;padding:10px 0}
+.app.collapsed .nav .ico{width:auto}
+.app.collapsed .pres-stack{position:absolute;right:-7px;top:-9px;margin:0}
+.app.collapsed .pres-dot{width:18px;height:18px;font-size:8px;margin-left:-5px;border-width:1.5px}
+.app.collapsed .side-foot{justify-content:center;padding:8px}
+
+/* Tablet (901–1100px): sidebar otomatis ringkas agar area konten lebih lega */
+/* (diatur lewat kelas collapsed di shell(), lihat app.js) */
+
+/* Tablet & HP (≤900px): menu jadi baris horizontal yang bisa digeser */
+@media (max-width:900px){
+ .app,.app.collapsed{grid-template-columns:minmax(0,1fr)}
+ .sidebar{padding:10px 12px;gap:8px}
+ .side-head{padding:8px 10px}
+ .nav{flex-direction:row;gap:6px;padding:2px 0 6px;scrollbar-width:thin}
+ .nav button{flex:none;padding:8px 12px;font-size:12.5px}
+ .nav .ico{width:auto}
+ .pres-stack{position:static}
+ .app.collapsed .collapse{display:none}
+ .collapse{display:none}
+}
+
+/* HP (≤640px) */
+@media (max-width:640px){
+ .side-head{padding:6px 8px}
+ .logo-img{width:34px;height:34px}
+ .brand-text small{display:none}
+ .brand-text strong{font-size:12px}
+ .topbar{padding:10px 12px;gap:8px}
+ .titles h1{font-size:16px}
+ .titles p{font-size:11.5px}
+ .top-actions{width:100%;justify-content:flex-start;gap:6px}
+ .top-actions .btn{padding:7px 9px;font-size:12px}
+ .sys{font-size:11.5px}
+ .presence-panel{left:0;right:auto;width:min(320px,calc(100vw - 32px))}
+ .content{padding:10px 12px 28px;gap:12px}
+ .filters,.range-ctl{display:grid;grid-template-columns:1fr;gap:6px}
+ .filters .select,.range-ctl .select,.range-ctl .input{width:100%;min-width:0;max-width:none}
+ .filter-card{padding:10px}
+ .kpis,.vols{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+ .card{padding:12px}
+ .card-head{flex-wrap:wrap;gap:8px}
+ .tablewrap{-webkit-overflow-scrolling:touch}
+ .modal,.dialog{max-width:calc(100vw - 24px)}
+ .content>*,.card,.tabs-card,.filter-card{max-width:100%;min-width:0;box-sizing:border-box}
+ .tabs-card{width:100%}
+ .tab{padding:7px 12px;font-size:12px}
+ .chip{white-space:normal}
+}
+@media (max-width:380px){
+ .kpis,.vols{grid-template-columns:minmax(0,1fr)}
+ .top-actions .btn{flex:1 1 auto}
+}

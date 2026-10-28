@@ -200,7 +200,7 @@ function menu(){const p=state.me.role;return [
  ['upload','Upload Inventory','⇧','INVENTORY & PLANNING'],
  ...(p==='admin'?[['admin','Manajemen Akses','⚙','REPORT & SETTINGS']]:[])]}
 function shell(){
- wrap(`<div class="progress" id="progress"><i></i></div><section class="app" id="app">
+ wrap(`<div class="progress" id="progress"><i></i></div><section class="app${innerWidth>900&&innerWidth<=1100?' collapsed':''}" id="app">
  <aside class="sidebar">
   <div class="side-head"><div class="brand-card"><img class="logo-img" src="logo.png" alt="Tigalapan OPR Division"/><div class="brand-text"><strong>TIGALAPAN</strong><small>STOCK OPNAME SYSTEM</small></div></div><button class="collapse" id="collapseBtn" title="Perkecil / perbesar menu">‹</button></div>
   <nav class="nav" id="nav"></nav>
