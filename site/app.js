@@ -426,11 +426,11 @@ function assignNo(rows){
 function schActions(r){
  const a=[],mgr=canManage();
  if(r.status==='SCHEDULED'){
-  a.push(btn('▶ Proses','sch-start','primary',{store:r.store_code}));
+  a.push(btn('▶ Proses','sch-start','primary',{store:r.store_code,id:r.id}));
   a.push(btn('✎ Edit','sch-edit','outline',{id:r.id}));
   a.push(btn('Hapus','sch-del','danger',{id:r.id}));
  }else if(r.status==='COUNTING'||r.status==='RECOUNT'){
-  a.push(btn('Lanjut Counting','count-open','primary',{store:r.store_code}));
+  a.push(btn('Lanjut Counting','count-open','primary',{store:r.store_code,cycle:r.id}));
   if(mgr)a.push(btn('Hapus','sch-del','danger',{id:r.id}));
  }else{
   a.push(btn('View Detail','val-open','outline',{id:r.id,store:r.store_code}));
@@ -465,8 +465,8 @@ async function showSchedule(){
 CHG['sch-filter']=async el=>{state.sch.store=el.value;await showSchedule()};
 ACT['sch-start']=async el=>{
  if(!confirm('Mulai SO sekarang? Stok sistem diambil dari inventory saat ini.'))return;
- await rpc('start',{p_store:el.dataset.store});toast('SO dimulai. Lanjutkan menghitung di SO Counting.');
- state.store=el.dataset.store;state.count.open=true;state.count.offset=0;state.count.search='';state.count.filter='ALL';state.count.team='';state.page='count';await refreshDashboard();await render();
+ await rpc('start_cycle',{p_cycle:el.dataset.id});toast('SO dimulai. Lanjutkan menghitung di SO Counting.');
+ state.store=el.dataset.store;state.count.cycle=el.dataset.id;state.count.open=true;state.count.offset=0;state.count.search='';state.count.filter='ALL';state.count.team='';state.page='count';await refreshDashboard();await render();
 };
 ACT['sch-edit']=async el=>{const r=state.sch.rows.find(x=>x.id===el.dataset.id);if(!r)throw Error('Jadwal tidak ditemukan. Muat ulang halaman.');openBuilder(null,r)};
 ACT['sch-del']=async el=>{
@@ -751,18 +751,40 @@ ACT['b-save']=async()=>{
 async function showCount(){
  const c=state.count;
  if(state.me.role==='store'){
-  await refreshDashboard();const s=current();
-  if(!s?.cycle_id||s.status==='SCHEDULED')return countStart(s);
-  return loadCount();
+  await refreshDashboard();
+  const t=await countTarget();
+  if(!t)return countStart(current());
+  if(t.status==='SCHEDULED')return countStart(schedArg(t));
+  return loadCount(t.id);
  }
  if(c.open){
-  await refreshDashboard();const s=current();
-  if(!s?.cycle_id){c.open=false;return showCount()}
-  return loadCount();
+  await refreshDashboard();
+  const t=await countTarget();
+  if(!t){c.open=false;return showCount()}
+  if(t.status==='SCHEDULED')return countStart(schedArg(t));
+  return loadCount(t.id);
  }
  return showCountList();
 }
 function current(){return state.dashboard.find(x=>x.code===state.store)||null}
+const OPEN_ST=['SCHEDULED','COUNTING','RECOUNT','SUBMITTED'];
+const CYC_LAB={SCHEDULED:'Terjadwal',COUNTING:'Counting',RECOUNT:'Recount',SUBMITTED:'Validasi SPV'};
+async function countTarget(){
+ const all=await rpc('schedule_list',{p_store:state.store||null});
+ const list=(all||[]).filter(r=>OPEN_ST.includes(r.status));
+ state.count.cycles=list;
+ let t=list.find(r=>r.id===state.count.cycle);
+ if(!t)t=list.find(r=>['COUNTING','RECOUNT','SUBMITTED'].includes(r.status))||list[0]||null;
+ state.count.cycle=t?t.id:null;
+ return t;
+}
+function schedArg(t){return {...t,cycle_id:t.id,inventory_count:current()?.inventory_count}}
+function cycleSwitchHTML(){
+ const list=state.count.cycles||[];
+ if(list.length<2)return '';
+ return `<div class="cyc-switch">${list.map(r=>`<button class="cyc-pill ${r.id===state.count.cycle?'on':''}" data-act="cyc-pick" data-id="${escapeHTML(r.id)}"><b class="mono">${escapeHTML(r.no||'SO')}</b><span>${CYC_LAB[r.status]||escapeHTML(r.status)}</span></button>`).join('')}</div>`;
+}
+ACT['cyc-pick']=async el=>{state.count.cycle=el.dataset.id;state.count.offset=0;state.count.search='';state.count.filter='ALL';state.count.team='';state.count.open=true;await render()};
 function mountUpPanel(keep,s){
  const slot=$('#upSlot');if(!slot)return;
  if(keep)slot.replaceWith(keep);else slot.outerHTML=uploadPanelHTML(s);
@@ -770,12 +792,12 @@ function mountUpPanel(keep,s){
 function countStart(s){
  const back=state.me.role!=='store'?`<div class="crumb"><button class="btn ghost" data-act="count-back">← Daftar SO</button></div>`:'';
  const keepUp=$('#upPanel');
- $('#content').innerHTML=`${back}<div id="upSlot"></div><div class="card stack"><div class="note info">${s?.status==='SCHEDULED'?`SO terjadwal${s.planned_date?' pada '+fmtDate(s.planned_date):''}. Klik Proses untuk memulai SO.`:'Belum ada SO untuk toko ini. Pastikan inventory sudah di-upload.'}</div>${s?.status==='SCHEDULED'||!s?.cycle_id?btn('▶ Proses / Mulai SO','start-so','primary'):''}</div>`;
+ $('#content').innerHTML=`${back}${cycleSwitchHTML()}<div id="upSlot"></div><div class="card stack"><div class="note info">${s?.status==='SCHEDULED'?`SO terjadwal${s.planned_date?' pada '+fmtDate(s.planned_date):''}. Klik Proses untuk memulai SO.`:'Belum ada SO untuk toko ini. Pastikan inventory sudah di-upload.'}</div>${s?.status==='SCHEDULED'||!s?.cycle_id?btn('▶ Proses / Mulai SO','start-so','primary'):''}</div>`;
  mountUpPanel(keepUp,s);
 }
-ACT['start-so']=async()=>{if(!confirm('Mulai SO sekarang? Stok sistem diambil dari inventory saat ini.'))return;await rpc('start',{p_store:state.store});toast('SO berhasil dimulai');state.count.open=true;await refreshDashboard();await render()};
+ACT['start-so']=async()=>{if(!confirm('Mulai SO sekarang? Stok sistem diambil dari inventory saat ini.'))return;if(state.count.cycle)await rpc('start_cycle',{p_cycle:state.count.cycle});else await rpc('start',{p_store:state.store});toast('SO berhasil dimulai');state.count.open=true;await refreshDashboard();await render()};
 ACT['count-back']=async()=>{state.count.open=false;state.count.search='';state.count.offset=0;await render()};
-ACT['count-open']=async el=>{state.store=el.dataset.store;state.count.open=true;state.count.offset=0;state.count.search='';state.count.filter='ALL';state.count.team='';state.page='count';await render()};
+ACT['count-open']=async el=>{state.store=el.dataset.store;state.count.cycle=el.dataset.cycle||null;state.count.open=true;state.count.offset=0;state.count.search='';state.count.filter='ALL';state.count.team='';state.page='count';await render()};
 async function showCountList(){
  leaveCountChannel();
  const c=state.count;
@@ -791,8 +813,8 @@ async function showCountList(){
 }
 function countActions(r){
  const a=[];
- if(r.status==='SCHEDULED'){a.push(btn('▶ Proses','sch-start','primary',{store:r.store_code}));a.push(btn('Hapus','sch-del','danger',{id:r.id}))}
- else{a.push(btn('Lanjut Counting','count-open','primary',{store:r.store_code}));if(canManage())a.push(btn('Hapus','sch-del','danger',{id:r.id}))}
+ if(r.status==='SCHEDULED'){a.push(btn('▶ Proses','sch-start','primary',{store:r.store_code,id:r.id}));a.push(btn('Hapus','sch-del','danger',{id:r.id}))}
+ else{a.push(btn('Lanjut Counting','count-open','primary',{store:r.store_code,cycle:r.id}));if(canManage())a.push(btn('Hapus','sch-del','danger',{id:r.id}))}
  return a.join('');
 }
 function drawCountRows(){
@@ -822,18 +844,21 @@ function uploadPanelHTML(s){
    <p class="footerhint">Inventory aktif sekarang: ${n(s?.inventory_count||0)} SKU. Maksimal 10.000 SKU per file.</p>
   </div></details>`;
 }
-async function loadCount(){
+async function loadCount(cid){
  const s=current();
- if(!s?.cycle_id||s.status==='SCHEDULED')return countStart(s);
+ const id=cid||state.count.cycle||s?.cycle_id;
+ if(!id)return countStart(s);
+ const sch=(state.count.cycles||[]).find(r=>r.id===id);
+ if(sch?.status==='SCHEDULED')return countStart(schedArg(sch));
  const q=state.count;
- const data=await rpc('count_page',{p_cycle:s.cycle_id,p_offset:q.offset,p_limit:50,p_search:q.search,p_filter:q.filter,p_team:q.team||null});q.data=data;joinCountChannel(s.cycle_id);
+ const data=await rpc('count_page',{p_cycle:id,p_offset:q.offset,p_limit:50,p_search:q.search,p_filter:q.filter,p_team:q.team||null});q.data=data;joinCountChannel(id);
  const edit=data.status==='COUNTING'||data.status==='RECOUNT';
  const keepUp=$('#upPanel');
  const back=state.me.role!=='store'?`<div class="crumb"><button class="btn ghost" data-act="count-back">← Daftar SO</button><span class="muted small">${escapeHTML(labelStore(state.store))}</span></div>`:'';
  const options=[['ALL','Semua SKU'],['PENDING','Belum Lengkap'],['DONE','Sudah Lengkap'],['SELISIH','Status Selisih'],['TALLY','Status Tally']].map(([v,l])=>`<option value="${v}" ${v===q.filter?'selected':''}>${l}</option>`).join('');
  const teams=data.teams||[];
  const teamSel=teams.length?`<select id="countTeam" class="input" data-change="count-team"><option value="">Semua Tim / POS</option>${teams.map(t=>`<option value="${escapeHTML(t)}" ${t===q.team?'selected':''}>${escapeHTML(t)}</option>`).join('')}</select>`:'';
- $('#content').innerHTML=`${back}<div id="upSlot"></div><div class="card">
+ $('#content').innerHTML=`${back}${cycleSwitchHTML()}<div id="upSlot"></div><div class="card">
   <div class="card-head"><div class="row"><h3>SO Berjalan</h3>${chip(data.status)}</div>${edit?btn('Submit Counting','count-submit','dark'):''}</div>
   <div class="toolbar"><input id="countSearch" class="input grow" placeholder="Cari SKU / nama produk" value="${escapeHTML(q.search)}"/>${teamSel}<select id="countFilter" class="input" data-change="count-filter-chg">${options}</select>${btn('Cari','count-find','outline')}${btn('📷 Scan','scan-count','outline')}</div>
   <div class="tablewrap"><table id="countTable" class="count-table"><thead><tr><th>Nama Item & Warna</th>${POS.map(([,l])=>`<th class="num">${l}</th>`).join('')}<th class="num">Total</th><th>Alasan (wajib jika selisih)</th><th>Status</th></tr></thead><tbody>${data.items.length?data.items.map(x=>countRowHTML(x,edit)).join(''):'<tr><td colspan="9" class="empty">Tidak ada SKU</td></tr>'}</tbody></table></div>

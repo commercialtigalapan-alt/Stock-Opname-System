@@ -1131,3 +1131,10 @@ body{-webkit-font-smoothing:antialiased}
 .calc-hist-head .btn{margin-left:auto}
 .calc-hist ul{list-style:none;margin:0;padding:0;max-height:170px;overflow:auto;display:grid;gap:4px}
 .calc-hist li{font-size:13px;display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
+
+/* v14: pemilih SO saat beberapa SO dikerjakan bersamaan */
+.cyc-switch{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.cyc-pill{display:inline-flex;gap:8px;align-items:center;padding:8px 14px;border-radius:999px;border:1px solid rgba(15,23,42,.12);background:#fff;cursor:pointer;font-size:13px}
+.cyc-pill span{color:#64748b;font-weight:600}
+.cyc-pill.on{border-color:#f97316;background:#fff7ed}
+.cyc-pill.on span{color:#c2410c}
