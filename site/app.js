@@ -155,7 +155,7 @@ function rangeControlHTML(p,r){
  }else if(r.kind==='custom'){
   extra=`<input class="input" type="date" value="${escapeHTML(r.from)}" data-change="rng" data-p="${p}" data-f="from" aria-label="Tanggal awal"/><span class="muted small">s/d</span><input class="input" type="date" value="${escapeHTML(r.to)}" data-change="rng" data-p="${p}" data-f="to" aria-label="Tanggal akhir"/>`;
  }
- return `<div class="range-ctl"><select class="input select" data-change="rng" data-p="${p}" data-f="kind">${Object.entries(RANGE_LABEL).map(([v,l])=>`<option value="${v}" ${r.kind===v?'selected':''}>${l}</option>`).join('')}</select>${extra}<span class="range-sum small muted">${escapeHTML(rangeSummary(r))}</span>${r.kind!=='all'?`<button class="btn ghost sm" data-act="rng-clear" data-p="${p}">✕</button>`:''}</div>`;
+ return `<div class="range-ctl"><select class="input select" data-change="rng" data-p="${p}" data-f="kind">${Object.entries(RANGE_LABEL).map(([v,l])=>`<option value="${v}" ${r.kind===v?'selected':''}>${l}</option>`).join('')}</select>${extra}<span class="range-sum small muted">${escapeHTML(rangeSummary(r))}</span>${r.kind!=='all'?`<button class="btn ghost sm" data-act="rng-clear" data-p="${p}">✕</button>`:''}${rstHTML(p)}</div>`;
 }
 const rangeOf=p=>p==='dash'?state.dash.range:p==='exp'?state.exp.range:state.sch.range;
 const rangeRefresh=p=>p==='dash'?showDashboard():p==='exp'?showExport():showSchedule();
@@ -229,7 +229,7 @@ function shell(){
  </aside>
  <main class="main">
   <header class="topbar"><div class="titles"><h1 id="topTitle"></h1><p id="topSubtitle"></p></div>
-   <div class="top-actions"><div class="presence-wrap"><button class="btn pill" data-act="presence-toggle" title="Siapa yang sedang aktif">👥 <b id="presN">0</b> aktif</button><div class="presence-panel hidden" id="presPanel"></div></div><span class="sys" id="sysPill"><i></i>System Online</span><button class="btn pill" data-act="filters-reset" title="Kembalikan semua filter ke kondisi awal">↺ Reset filter</button><button class="btn pill" data-act="refresh" title="Muat ulang data dari server">↻ Refresh</button>${isAdmin()?'<button class="btn pill ghost" data-act="app-reset" title="Muat ulang seluruh aplikasi">⟲ Reset</button>':''}<button class="btn pill ghost" data-act="logout">Keluar</button></div>
+   <div class="top-actions"><div class="presence-wrap"><button class="btn pill" data-act="presence-toggle" title="Siapa yang sedang aktif">👥 <b id="presN">0</b> aktif</button><div class="presence-panel hidden" id="presPanel"></div></div><span class="sys" id="sysPill"><i></i>System Online</span><button class="btn pill" data-act="refresh" title="Muat ulang data dari server">↻ Refresh</button>${isAdmin()?'<button class="btn pill ghost" data-act="app-reset" title="Muat ulang seluruh aplikasi">⟲ Reset</button>':''}<button class="btn pill ghost" data-act="logout">Keluar</button></div>
   </header>
   <div class="content" id="content"></div>
  </main></section>`);
@@ -377,16 +377,17 @@ async function showDashboard(){
 }
 CHG['dash-filter']=async()=>{state.dash.store=$('#dStore').value;state.dash.type=$('#dType').value;await showDashboard()};
 ACT['dash-tab']=async el=>{state.dash.tab=el.dataset.tab;await showDashboard()};
-function resetAllFilters(){
- state.dash.store='';state.dash.type='';state.dash.range=newRange();
- state.sch.store='';state.sch.range=newRange();
- state.exp.store='';state.exp.range=newRange();state.exp.sel=new Set();
- Object.assign(state.count,{offset:0,search:'',filter:'ALL',team:'',listQ:''});
- Object.assign(state.validation,{offset:0,search:'',filter:'VARIANCE',status:'ALL',listQ:''});
- Object.assign(state.cov,{store:'',filter:'ALL',search:'',offset:0});
- if(state.ba){state.ba.status='ALL';state.ba.store='ALL'}
+function resetPage(p){
+ if(p==='dash'){state.dash.store='';state.dash.type='';state.dash.range=newRange()}
+ else if(p==='sch'){state.sch.store='';state.sch.range=newRange()}
+ else if(p==='exp'){state.exp.store='';state.exp.range=newRange();state.exp.sel=new Set()}
+ else if(p==='count'){Object.assign(state.count,{offset:0,search:'',filter:'ALL',team:'',listQ:''})}
+ else if(p==='validation'){Object.assign(state.validation,{offset:0,search:'',filter:'VARIANCE',status:'ALL',listQ:''})}
+ else if(p==='cov'){Object.assign(state.cov,{filter:'ALL',search:'',offset:0})}
+ else if(p==='ba'&&state.ba){state.ba.status='ALL';state.ba.store='ALL'}
 }
-ACT['filters-reset']=async()=>{resetAllFilters();toast('Semua filter dikembalikan ke awal.');await render()};
+const rstHTML=p=>`<button class="btn ghost sm filter-reset" data-act="filters-reset" data-p="${p}" title="Kembalikan filter di blok ini ke awal">↺ Reset</button>`;
+ACT['filters-reset']=async el=>{resetPage(el.dataset.p);await render()};
 ACT['dash-reset']=async()=>{state.dash.store='';state.dash.type='';state.dash.range=newRange();await showDashboard()};
 
 /* ---------- Import CSV inventory ---------- */
@@ -815,7 +816,7 @@ async function showCountList(){
  c.rows=all.filter(r=>['SCHEDULED','COUNTING','RECOUNT'].includes(r.status));
  c.sel=new Set([...c.sel].filter(id=>c.rows.some(r=>r.id===id)));
  $('#content').innerHTML=`<div class="card">
-  <div class="toolbar"><input id="cListSearch" class="input grow" placeholder="Cari SO Number / Store" value="${escapeHTML(c.listQ)}"/></div>
+  <div class="toolbar"><input id="cListSearch" class="input grow" placeholder="Cari SO Number / Store" value="${escapeHTML(c.listQ)}"/>${rstHTML('count')}</div>
   <div class="bulkbar"><button class="btn outline" data-act="c-all">Pilih Semua</button><button class="btn outline" data-act="c-none">Kosongkan</button>${canManage()?'<button class="btn danger" data-act="c-bulk-del">Hapus Dipilih</button>':''}<span class="muted small" id="cSelCount"></span></div>
   <div class="tablewrap"><table><thead><tr><th></th><th>SO Number</th><th>Store</th><th>Tanggal</th><th>Tipe</th><th>Status</th><th class="num">SKU</th><th>Action</th></tr></thead><tbody id="cBody"></tbody></table></div>
  </div>`;
@@ -870,7 +871,7 @@ async function loadCount(cid){
  const teamSel=teams.length?`<select id="countTeam" class="input" data-change="count-team"><option value="">Semua Tim / POS</option>${teams.map(t=>`<option value="${escapeHTML(t)}" ${t===q.team?'selected':''}>${escapeHTML(t)}</option>`).join('')}</select>`:'';
  $('#content').innerHTML=`${back}${cycleSwitchHTML()}<div id="upSlot"></div><div class="card">
   <div class="card-head"><div class="row"><h3>SO Berjalan</h3>${chip(data.status)}</div>${edit?btn('Submit Counting','count-submit','dark'):''}</div>
-  <div class="toolbar"><input id="countSearch" class="input grow" placeholder="Cari SKU / nama produk" value="${escapeHTML(q.search)}"/>${teamSel}<select id="countFilter" class="input" data-change="count-filter-chg">${options}</select>${btn('Cari','count-find','outline')}${btn('📷 Scan','scan-count','outline')}</div>
+  <div class="toolbar"><input id="countSearch" class="input grow" placeholder="Cari SKU / nama produk" value="${escapeHTML(q.search)}"/>${teamSel}<select id="countFilter" class="input" data-change="count-filter-chg">${options}</select>${btn('Cari','count-find','outline')}${btn('📷 Scan','scan-count','outline')}${rstHTML('count')}</div>
   <div class="tablewrap"><table id="countTable" class="count-table"><thead><tr><th>Nama Item & Warna</th>${POS.map(([,l])=>`<th class="num">${l}</th>`).join('')}<th class="num">Total</th><th>Alasan (wajib jika selisih)</th><th>Status</th></tr></thead><tbody>${data.items.length?data.items.map(x=>countRowHTML(x,edit)).join(''):'<tr><td colspan="9" class="empty">Tidak ada SKU</td></tr>'}</tbody></table></div>
   <div class="pager"><span class="small muted">${n(data.total_filtered?q.offset+1:0)}–${n(Math.min(q.offset+50,data.total_filtered))} dari ${n(data.total_filtered)} SKU</span><div class="row">${btn('← Sebelumnya','count-prev','outline')}${btn('Berikutnya →','count-next','outline')}</div></div>
   <div class="footerhint">Input tersimpan otomatis per baris. Tekan Submit Counting untuk mengirim semua hasil ke validasi SPV.</div>
@@ -1129,7 +1130,7 @@ async function loadValidation(){
     <button class="${v.filter==='VARIANCE'?'on':''}" data-act="val-filter" data-v="VARIANCE">Variance (${n(sum.variance_skus)})</button>
     <button class="${v.filter==='ALL'?'on':''}" data-act="val-filter" data-v="ALL">Semua (${n(sum.total_skus)})</button>
    </div>
-   <input id="valSearch" class="input grow" placeholder="Cari item / nama" value="${escapeHTML(v.search)}"/>${btn('Cari','val-find','outline')}${(v.search||v.filter!=='VARIANCE')?'<button class="btn ghost sm" data-act="val-clear">✕ Clear</button>':''}</div>
+   <input id="valSearch" class="input grow" placeholder="Cari item / nama" value="${escapeHTML(v.search)}"/>${btn('Cari','val-find','outline')}${rstHTML('validation')}</div>
   <div class="tablewrap"><table id="valTable" class="val-table"><thead><tr><th>Item & Warna</th><th class="num">System</th>${POS.map(([,l])=>`<th class="num">${l}</th>`).join('')}<th class="num">Total Store</th><th>Status</th><th>Alasan</th></tr></thead><tbody>${data.items.map(rowHTML).join('')||'<tr><td colspan="9" class="empty">Tidak ada SKU.</td></tr>'}</tbody></table></div>
   <div class="pager"><span class="small muted">${n(data.total_filtered?v.offset+1:0)}–${n(Math.min(v.offset+50,data.total_filtered))} / ${n(data.total_filtered)} SKU</span><div class="row">${btn('← Sebelumnya','val-prev','outline')}${btn('Berikutnya →','val-next','outline')}</div></div>
   <div class="footerhint">Alasan dan SPV Qty tersimpan otomatis saat diubah. Untuk SKU selisih, alasan wajib diisi sebelum Approve. Jika SPV Qty kosong, sistem memakai total fisik Store.</div>
@@ -1351,7 +1352,7 @@ async function showCoverage(){
    ${mini('r','Terkunci',n(s2.terkunci),'Menunggu SKU lain naik rasio')}
  </div>
  <div class="card">
-  <div class="seg">${filters.map(([v,l])=>`<button class="${c.filter===v?'on':''}" data-act="cov-filter" data-v="${v}">${l}</button>`).join('')}</div>
+  <div class="seg">${filters.map(([v,l])=>`<button class="${c.filter===v?'on':''}" data-act="cov-filter" data-v="${v}">${l}</button>`).join('')}${rstHTML('cov')}</div>
   <div class="tablewrap" style="margin-top:10px"><table class="cov-table"><thead><tr><th>Item & Warna</th><th>SKU</th><th class="num">Rasio</th><th>Status</th><th>Pemilihan</th></tr></thead><tbody>
   ${(d.items||[]).map(x=>`<tr><td class="nm">${nameBadge(x.name,x.category)}</td><td class="mono">${escapeHTML(x.sku)}</td><td class="num"><span class="ratio ${x.ratio?'r1':'r0'}">${n(x.ratio)}x</span></td><td>${x.status==='SUDAH'?chip('TALLY','SUDAH SO'):chip('BELUM','BELUM SO')}</td><td>${x.eligible?'<span class="chip blue"><i></i>Bisa dipilih</span>':'<span class="chip red"><i></i>Terkunci</span>'}</td></tr>`).join('')||'<tr><td colspan="5" class="empty">Tidak ada SKU pada filter ini.</td></tr>'}
   </tbody></table></div>
@@ -1536,7 +1537,7 @@ async function showBA(){
  $('#content').innerHTML=`<div class="card">
   <div class="card-head"><div><h3>Berita Acara SO</h3><p class="muted small">SPV menandatangani dahulu, lalu Manager menyetujui. Unduh untuk Drive, export CSV untuk Moka, lalu bersihkan dari database.</p></div><span class="chip blue"><i></i>${n(all.length)} BA aktif</span></div>
   <div class="ba-tabs">${BA_LABEL.map(([k,l])=>`<button class="tab ${b.status===k?'on':''}" data-act="ba-filter" data-k="${k}">${l} <b>${n(all.filter(x=>BA_MATCH[k](x)&&(b.store==='ALL'||x.store_code===b.store)).length)}</b></button>`).join('')}</div>
-  <div class="ba-bulk no-print"><select class="input" data-change="ba-store"><option value="ALL">Semua toko</option>${stores.map(([c,nm])=>`<option value="${escapeHTML(c)}" ${b.store===c?'selected':''}>${escapeHTML(nm||c)}</option>`).join('')}</select></div>
+  <div class="ba-bulk no-print"><select class="input" data-change="ba-store"><option value="ALL">Semua toko</option>${stores.map(([c,nm])=>`<option value="${escapeHTML(c)}" ${b.store===c?'selected':''}>${escapeHTML(nm||c)}</option>`).join('')}</select>${rstHTML('ba')}</div>
   <div class="ba-bar no-print">
    <div class="ba-scope"><div><b>Berlaku untuk:</b> ${useSel?`${n(picked.length)} BA yang dipilih`:`semua ${n(rows.length)} BA di filter ini`}${useSel?`<button class="btn ghost sm" data-act="ba-clear-sel">Kosongkan pilihan</button>`:''}</div><small class="muted">Centang BA untuk memilih sebagian. Tanpa centang, aksi berlaku untuk semua BA di filter.</small></div>
    <div class="ba-acts">
