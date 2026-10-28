@@ -234,6 +234,7 @@ function updateNav(){const el=$('#nav');if(!el)return;let last='',html='';const 
   html+=`<button data-page="${id}" class="${state.page===id?'active':''}" title="${title}"><span class="ico">${icon}</span><span class="lbl">${title}</span>${cnt}</button>`;
  }
  el.innerHTML=html;
+ paintNavPresence();
  el.querySelectorAll('[data-page]').forEach(b2=>b2.onclick=async()=>{state.page=b2.dataset.page;state.validation.open=false;state.count.open=false;state.count.sel=new Set();await render()});
 }
 const loadingHTML=(t='Memuat data…')=>`<div class="card loading-card"><span class="spinner"></span>${t}</div>`;
@@ -800,6 +801,7 @@ async function loadCount(){
   <div class="footerhint">Input tersimpan otomatis per baris. Tekan Submit Counting untuk mengirim semua hasil ke validasi SPV.</div>
  </div>`;
  if(edit)restoreCountDraft(data.cycle_id);
+ renderPresence();
 }
 function statusCell(status,reason){
  const warn=status==='SELISIH'&&!String(reason||'').trim();
@@ -1033,6 +1035,7 @@ async function loadValidation(){
   <div class="pager"><span class="small muted">${n(data.total_filtered?v.offset+1:0)}–${n(Math.min(v.offset+50,data.total_filtered))} / ${n(data.total_filtered)} SKU</span><div class="row">${btn('← Sebelumnya','val-prev','outline')}${btn('Berikutnya →','val-next','outline')}</div></div>
   <div class="footerhint">Alasan dan SPV Qty tersimpan otomatis saat diubah. Untuk SKU selisih, alasan wajib diisi sebelum Approve. Jika SPV Qty kosong, sistem memakai total fisik Store.</div>
  </div>`;
+renderPresence();
 }
 ACT['val-clear']=async()=>{const v=state.validation;v.search='';v.filter='VARIANCE';v.offset=0;await loadValidation()};
 CHG['val-field']=async el=>{
@@ -1319,8 +1322,16 @@ function presActivity(){
  return 'Dashboard';
 }
 function presPayload(){
- return {name:state.me.name||state.me.email,role:state.me.role,store:state.store||'',storeLabel:labelStore(state.store)||'',
+ const f=document.activeElement;const inTbl=f?.closest?.('#countTable, #valTable');
+ const tr=inTbl?f.closest('tr[data-sku]'):null;
+ return {key:presKey,name:state.me.name||state.me.email,role:state.me.role,store:state.store||'',storeLabel:labelStore(state.store)||'',
+  pid:state.page,so:presCycleId(),sku:tr?tr.dataset.sku:null,
   page:(PAGE[state.page]||PAGE.dashboard)[0],act:presActivity(),at:Date.now()};
+}
+function presCycleId(){
+ if(state.page==='count')return state.count.data?.cycle_id||null;
+ if(state.page==='validation')return state.validation.data?.cycle_id||null;
+ return null;
 }
 function updatePresence(){
  if(!presCh||!state.me)return;
@@ -1334,6 +1345,9 @@ function renderPresence(){
  if(state.me.role==='store')list=list.filter(x=>x.store===state.me.store_code);
  list.sort((a,b)=>(a.name||'').localeCompare(b.name||''));
  const cnt=$('#presN');if(cnt)cnt.textContent=n(list.length);
+ presOthers=list.filter(x=>x.key!==presKey);
+ paintNavPresence();
+ paintRowBusy();
  const panel=$('#presPanel');
  if(panel&&!panel.classList.contains('hidden')){
   panel.innerHTML=`<div class="pres-head"><b>User aktif</b><span class="small muted">${n(list.length)} sesi</span></div>`+
@@ -1363,3 +1377,27 @@ function stopPresence(){
 }
 ACT['presence-toggle']=async()=>{const p=$('#presPanel');if(!p)return;p.classList.toggle('hidden');renderPresence()};
 document.addEventListener('click',e=>{const p=$('#presPanel');if(p&&!p.classList.contains('hidden')&&!e.target.closest('.presence-wrap'))p.classList.add('hidden')});
+
+let presOthers=[];
+// Avatar user lain di menu yang sedang mereka buka
+function paintNavPresence(){
+ $$('#nav [data-page]').forEach(b=>{
+  const who=presOthers.filter(x=>x.pid===b.dataset.page);
+  let box=b.querySelector('.pres-stack');
+  if(!box){box=document.createElement('span');box.className='pres-stack';b.appendChild(box)}
+  box.innerHTML=who.slice(0,3).map(x=>`<i class="pres-dot" title="${escapeHTML(x.name)} · ${escapeHTML(x.act||'')}">${escapeHTML(ini(x.name))}</i>`).join('')+(who.length>3?`<i class="pres-dot more">+${who.length-3}</i>`:'');
+ });
+}
+// Tanda di baris yang sedang diisi user lain (pengingat agar tidak mengisi baris yang sama)
+function paintRowBusy(){
+ const cid=presCycleId();
+ $$('#countTable tr[data-sku], #valTable tr[data-sku]').forEach(tr=>{tr.classList.remove('row-busy');tr.querySelectorAll('.busy-tag').forEach(e=>e.remove())});
+ if(!cid)return;
+ presOthers.filter(x=>x.sku&&x.so===cid).forEach(x=>{
+  $$('#countTable tr[data-sku], #valTable tr[data-sku]').filter(r=>r.dataset.sku===x.sku).forEach(tr=>{
+   tr.classList.add('row-busy');
+   const cell=tr.querySelector('td.nm')||tr.firstElementChild;
+   if(cell)cell.insertAdjacentHTML('beforeend',`<span class="busy-tag">✎ ${escapeHTML(x.name)} sedang mengisi</span>`);
+  });
+ });
+}

@@ -867,3 +867,11 @@ body{font-size:13.5px;background:radial-gradient(900px 420px at 100% -10%,#fde4c
 .pres-av{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#f97316,#ec4899);color:#fff;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center;flex:none}
 .pres-main{min-width:0;display:grid;gap:2px}
 .pres-name{font-weight:800;font-size:13px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+
+/* ===== Presence: penanda di menu dan baris yang sedang diisi user lain ===== */
+.pres-stack{display:inline-flex;align-items:center;margin-left:auto;margin-right:6px;flex:none}
+.pres-dot{width:22px;height:22px;border-radius:50%;background:linear-gradient(135deg,#f97316,#ec4899);color:#fff;font-style:normal;font-size:9px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;border:2px solid #4338ca;margin-left:-6px}
+.pres-dot.more{background:#475569}
+.row-busy td{background:#fff7ed!important}
+.row-busy td.nm{box-shadow:inset 4px 0 0 #f97316}
+.busy-tag{display:inline-flex;align-items:center;margin-left:8px;margin-top:4px;padding:2px 8px;border-radius:99px;background:#fef3c7;color:#92400e;font-size:11px;font-weight:700;white-space:nowrap}
