@@ -239,6 +239,7 @@ function updateNav(){const el=$('#nav');if(!el)return;let last='',html='';const 
 const loadingHTML=(t='Memuat data…')=>`<div class="card loading-card"><span class="spinner"></span>${t}</div>`;
 async function render(){
  if(!state.me)return;
+ if(state.page!=='count')leaveCountChannel();
  const m=PAGE[state.page]||PAGE.dashboard;$('#topTitle').textContent=m[0];$('#topSubtitle').textContent=m[1];
  $('#content').innerHTML=loadingHTML();
  try{
@@ -746,6 +747,7 @@ ACT['start-so']=async()=>{if(!confirm('Mulai SO sekarang? Stok sistem diambil da
 ACT['count-back']=async()=>{state.count.open=false;state.count.search='';state.count.offset=0;await render()};
 ACT['count-open']=async el=>{state.store=el.dataset.store;state.count.open=true;state.count.offset=0;state.count.search='';state.count.filter='ALL';state.count.team='';state.page='count';await render()};
 async function showCountList(){
+ leaveCountChannel();
  const c=state.count;
  const all=assignNo(await rpc('schedule_list',{p_store:null}));
  c.rows=all.filter(r=>['SCHEDULED','COUNTING','RECOUNT'].includes(r.status));
@@ -783,7 +785,7 @@ async function loadCount(){
  const s=current();
  if(!s?.cycle_id||s.status==='SCHEDULED')return countStart(s);
  const q=state.count;
- const data=await rpc('count_page',{p_cycle:s.cycle_id,p_offset:q.offset,p_limit:50,p_search:q.search,p_filter:q.filter,p_team:q.team||null});q.data=data;
+ const data=await rpc('count_page',{p_cycle:s.cycle_id,p_offset:q.offset,p_limit:50,p_search:q.search,p_filter:q.filter,p_team:q.team||null});q.data=data;joinCountChannel(s.cycle_id);
  const edit=data.status==='COUNTING'||data.status==='RECOUNT';
  const back=state.me.role!=='store'?`<div class="crumb"><button class="btn ghost" data-act="count-back">← Daftar SO</button><span class="muted small">${escapeHTML(labelStore(state.store))}</span></div>`:'';
  const options=[['ALL','Semua SKU'],['PENDING','Belum Lengkap'],['DONE','Sudah Lengkap'],['SELISIH','Status Selisih'],['TALLY','Status Tally']].map(([v,l])=>`<option value="${v}" ${v===q.filter?'selected':''}>${l}</option>`).join('');
@@ -853,7 +855,40 @@ async function saveRow(tr){
   clearCountDraft(d.cycle_id,[row.sku]);
   const st=await rpc('row_status',{p_cycle:d.cycle_id,p_sku:row.sku});
   paintRow(tr,st.status,st.total,row.reason);
+  broadcastRow(row,st);
  }finally{tr.classList.remove('row-saving')}
+}
+/* ---------- Realtime SO Counting: perubahan qty dari akun/perangkat lain langsung tampil ---------- */
+let countCh=null,countChCid=null,countPoll=null;
+const isTypingCount=()=>{const a=document.activeElement;return !!(a&&a.closest&&a.closest('#countTable'))};
+function joinCountChannel(cid){
+ if(!cid||(countChCid===cid&&countCh))return;
+ leaveCountChannel();
+ countChCid=cid;
+ try{
+  countCh=sb.channel('so-count-'+cid,{config:{broadcast:{self:false}}})
+   .on('broadcast',{event:'row'},({payload})=>applyRemoteRow(payload))
+   .subscribe();
+ }catch(e){countCh=null}
+ // cadangan: muat ulang halaman tiap 15 detik bila tidak sedang diketik
+ countPoll=setInterval(()=>{if(state.page==='count'&&!isTypingCount())loadCount().catch(()=>{})},15000);
+}
+function leaveCountChannel(){
+ if(countPoll){clearInterval(countPoll);countPoll=null}
+ if(countCh){try{sb.removeChannel(countCh)}catch(e){}countCh=null}
+ countChCid=null;
+}
+function applyRemoteRow(p){
+ const tbl=$('#countTable');if(!tbl||!p?.sku)return;
+ const tr=[...tbl.querySelectorAll('tr[data-sku]')].find(x=>x.dataset.sku===p.sku);if(!tr)return;
+ if(tr.contains(document.activeElement))return; // sedang diketik di baris ini: jangan timpa
+ POS.forEach(([k])=>{const inp=tr.querySelector(`[data-pos="${k}"]`);if(inp&&document.activeElement!==inp)inp.value=p[k]??''});
+ const note=tr.querySelector('.noteval');if(note&&document.activeElement!==note)note.value=p.reason||'';
+ paintRow(tr,p.status,p.total,p.reason);
+}
+function broadcastRow(row,st){
+ if(!countCh)return;
+ countCh.send({type:'broadcast',event:'row',payload:{sku:row.sku,display:row.display,reject:row.reject,rak_utama:row.rak_utama,rak_cadangan:row.rak_cadangan,reason:row.reason,status:st.status,total:st.total}}).catch(()=>{});
 }
 CHG['count-row']=async el=>{const tr=el.closest('tr[data-sku]');if(tr)await saveRow(tr)};
 async function saveCountPage(){
