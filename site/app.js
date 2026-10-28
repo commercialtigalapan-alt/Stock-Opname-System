@@ -467,11 +467,12 @@ async function showSchedule(){
    ${btn('+ Partial SO','b-open','outline',{type:'PARTIAL'})}${btn('+ Grand SO','b-open','primary',{type:'GRAND'})}</div></div>
  <div class="card filter-card">${rangeControlHTML('sch',sc.range)}</div>
  <div class="note info">${isAdmin()||state.me.role==='spv'?'Jadwal per toko. SO yang sudah APPROVED tampil sesuai rentang tanggal yang dipilih.':'Jadwal SO toko Anda. Buat, ubah, atau hapus jadwal yang belum diproses, lalu klik Proses untuk memulai SO.'}</div>
- ${groups.size?[...groups.values()].map(g=>{const run=g.rows.filter(r=>['COUNTING','RECOUNT'].includes(r.status)).length;const busy=g.rows.some(r=>['COUNTING','RECOUNT','SUBMITTED'].includes(r.status));return `<details class="card store-folder" ${busy?'open':''}>
+ ${groups.size?[...groups.values()].map(g=>{const run=g.rows.filter(r=>['COUNTING','RECOUNT'].includes(r.status)).length;const busy=g.rows.some(r=>['COUNTING','RECOUNT','SUBMITTED'].includes(r.status));const code=g.rows[0].store_code;const isOpen=(state.sch.folders||{})[code]??busy;return `<details class="card store-folder" data-code="${escapeHTML(code)}" ${isOpen?'open':''}>
    <summary><span class="sf-name">📁 ${escapeHTML(g.name)}</span><span class="sf-meta">${n(g.rows.length)} SO${run?` · ${n(run)} sedang berjalan`:''}</span></summary>
    <div class="tablewrap"><table><thead><tr><th>SO</th><th>Tanggal</th><th>PIC</th><th>Status</th><th class="num">SKU</th><th>Action</th></tr></thead><tbody>${g.rows.map(r=>`<tr><td><b class="mono">${escapeHTML(r.no)}</b><br><small class="muted">${r.so_type==='PARTIAL'?'PARTIAL':'GRAND'}${r.start_time?' • '+escapeHTML(r.start_time.slice(0,5)):''}${r.team_map?' • per tim/POS':(r.scope_rule?' • category/warna':'')}</small></td><td>${fmtDate(r.planned_date)}</td><td>${escapeHTML(r.pic||'-')}</td><td>${chip(r.status)}</td><td class="num">${n(r.scope_count)}</td><td class="actions">${schActions(r)}</td></tr>`).join('')}</tbody></table></div>
   </details>`}).join(''):'<div class="card empty">Belum ada SO pada filter ini.'+' Klik + Partial SO atau + Grand SO untuk membuat jadwal.</div>'}`;
 }
+document.addEventListener('toggle',e=>{const d=e.target;if(d&&d.classList&&d.classList.contains('store-folder')&&d.dataset.code){state.sch.folders=state.sch.folders||{};state.sch.folders[d.dataset.code]=d.open}},true);
 CHG['sch-filter']=async el=>{state.sch.store=el.value;await showSchedule()};
 ACT['sch-start']=async el=>{
  if(!confirm('Mulai SO sekarang? Stok sistem diambil dari inventory saat ini.'))return;
@@ -1431,9 +1432,14 @@ function presActivity(){
 function presPayload(){
  const f=document.activeElement;const inTbl=f?.closest?.('#countTable, #valTable');
  const tr=inTbl?f.closest('tr[data-sku]'):null;
- return {key:presKey,name:state.me.name||state.me.email,role:state.me.role,store:state.store||'',storeLabel:labelStore(state.store)||'',
+ return {key:presKey,name:state.me.name||state.me.email,role:state.me.role,store:state.store||'',storeLabel:presStoreLabel(),
   pid:state.page,so:presCycleId(),sku:tr?tr.dataset.sku:null,
   page:(PAGE[state.page]||PAGE.dashboard)[0],act:presActivity(),at:Date.now()};
+}
+function presStoreLabel(){
+ if(state.me?.role==='store'||['count','validation'].includes(state.page))return labelStore(state.store)||'';
+ if(state.page==='dashboard'&&state.dash.store)return labelStore(state.dash.store)||'';
+ return 'Semua toko';
 }
 function presCycleId(){
  if(state.page==='count')return state.count.data?.cycle_id||null;
