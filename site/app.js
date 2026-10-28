@@ -208,7 +208,7 @@ function shell(){
  </aside>
  <main class="main">
   <header class="topbar"><div class="titles"><h1 id="topTitle"></h1><p id="topSubtitle"></p></div>
-   <div class="top-actions"><span class="sys" id="sysPill"><i></i>System Online</span><button class="btn pill" data-act="refresh" title="Muat ulang data dari server">↻ Refresh</button><button class="btn pill ghost" data-act="app-reset" title="Muat ulang seluruh aplikasi">⟲ Reset</button><button class="btn pill ghost" data-act="logout">Keluar</button></div>
+   <div class="top-actions"><span class="sys" id="sysPill"><i></i>System Online</span><button class="btn pill" data-act="refresh" title="Muat ulang data dari server">↻ Refresh</button>${isAdmin()?'<button class="btn pill ghost" data-act="app-reset" title="Muat ulang seluruh aplikasi">⟲ Reset</button>':''}<button class="btn pill ghost" data-act="logout">Keluar</button></div>
   </header>
   <div class="content" id="content"></div>
  </main></section>`);
