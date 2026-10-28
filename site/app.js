@@ -391,8 +391,8 @@ function schActions(r){
  const a=[],mgr=canManage();
  if(r.status==='SCHEDULED'){
   a.push(btn('▶ Proses','sch-start','primary',{store:r.store_code}));
-  if(mgr)a.push(btn('✎ Edit','sch-edit','outline',{id:r.id}));
-  if(mgr)a.push(btn('Hapus','sch-del','danger',{id:r.id}));
+  a.push(btn('✎ Edit','sch-edit','outline',{id:r.id}));
+  a.push(btn('Hapus','sch-del','danger',{id:r.id}));
  }else if(r.status==='COUNTING'||r.status==='RECOUNT'){
   a.push(btn('Lanjut Counting','count-open','primary',{store:r.store_code}));
   if(mgr)a.push(btn('Hapus','sch-del','danger',{id:r.id}));
@@ -418,13 +418,13 @@ async function showSchedule(){
  $('#content').innerHTML=`<div class="toolbar-top">
   <div class="pills"><span class="pill-stat">Belum Selesai · ${n(open)}</span><span class="pill-stat ok">Selesai pada periode · ${n(doneP)}</span></div>
   <div class="toolbar-right"><select class="input select" data-change="sch-filter">${storeOptions(sc.store,true)}</select>
-   ${canManage()?btn('+ Partial SO','b-open','outline',{type:'PARTIAL'})+btn('+ Grand SO','b-open','primary',{type:'GRAND'}):''}</div></div>
+   ${btn('+ Partial SO','b-open','outline',{type:'PARTIAL'})}${btn('+ Grand SO','b-open','primary',{type:'GRAND'})}</div></div>
  <div class="card filter-card">${rangeControlHTML('sch',sc.range)}</div>
- <div class="note info">${canManage()?'Jadwal per toko. SO yang sudah APPROVED tampil sesuai rentang tanggal yang dipilih.':'Jadwal SO toko Anda (hanya lihat). Klik Proses untuk memulai SO.'}</div>
+ <div class="note info">${isAdmin()||state.me.role==='spv'?'Jadwal per toko. SO yang sudah APPROVED tampil sesuai rentang tanggal yang dipilih.':'Jadwal SO toko Anda. Buat, ubah, atau hapus jadwal yang belum diproses, lalu klik Proses untuk memulai SO.'}</div>
  ${groups.size?[...groups.values()].map(g=>`<div class="card">
    <div class="card-head"><h3>▣ ${escapeHTML(g.name)}</h3><span class="muted small">${n(g.rows.length)} SO</span></div>
    <div class="tablewrap"><table><thead><tr><th>SO</th><th>Tanggal</th><th>PIC</th><th>Status</th><th class="num">SKU</th><th>Action</th></tr></thead><tbody>${g.rows.map(r=>`<tr><td><b class="mono">${escapeHTML(r.no)}</b><br><small class="muted">${r.so_type==='PARTIAL'?'PARTIAL':'GRAND'}${r.start_time?' • '+escapeHTML(r.start_time.slice(0,5)):''}${r.team_map?' • per tim/POS':(r.scope_rule?' • category/warna':'')}</small></td><td>${fmtDate(r.planned_date)}</td><td>${escapeHTML(r.pic||'-')}</td><td>${chip(r.status)}</td><td class="num">${n(r.scope_count)}</td><td class="actions">${schActions(r)}</td></tr>`).join('')}</tbody></table></div>
-  </div>`).join(''):'<div class="card empty">Belum ada SO pada filter ini.'+(canManage()?' Klik + Partial SO atau + Grand SO untuk membuat jadwal.':'')+'</div>'}`;
+  </div>`).join(''):'<div class="card empty">Belum ada SO pada filter ini.'+' Klik + Partial SO atau + Grand SO untuk membuat jadwal.</div>'}`;
 }
 CHG['sch-filter']=async el=>{state.sch.store=el.value;await showSchedule()};
 ACT['sch-start']=async el=>{
@@ -748,9 +748,8 @@ async function showCountList(){
 }
 function countActions(r){
  const a=[];
- if(r.status==='SCHEDULED'){if(canManage())a.push(btn('▶ Proses','sch-start','primary',{store:r.store_code}))}
- else a.push(btn('Lanjut Counting','count-open','primary',{store:r.store_code}));
- if(canManage())a.push(btn('Hapus','sch-del','danger',{id:r.id}));
+ if(r.status==='SCHEDULED'){a.push(btn('▶ Proses','sch-start','primary',{store:r.store_code}));a.push(btn('Hapus','sch-del','danger',{id:r.id}))}
+ else{a.push(btn('Lanjut Counting','count-open','primary',{store:r.store_code}));if(canManage())a.push(btn('Hapus','sch-del','danger',{id:r.id}))}
  return a.join('');
 }
 function drawCountRows(){
