@@ -1042,3 +1042,64 @@ body{font-size:13.5px;background:radial-gradient(900px 420px at 100% -10%,#fde4c
 .ba-bulk .input{max-width:280px}
 .ba-scope>div{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .ba-bulk .input{max-width:280px}
+
+/* ===== v10: visual modern selaras tema (indigo sidebar + oranye aksen) ===== */
+:root{--ink:#1e1b4b;--ink2:#64748b;--glow-o:rgba(249,115,22,.16);--glow-i:rgba(99,102,241,.16)}
+body{-webkit-font-smoothing:antialiased}
+
+/* Judul seksi: aksen batang gradien, tidak lagi teks polos */
+.sec-title{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:15px;font-weight:800;color:var(--ink);letter-spacing:-.01em;margin:22px 0 10px}
+.sec-title::before{content:"";width:4px;height:18px;border-radius:4px;background:linear-gradient(180deg,#fb923c,#6366f1);flex:none}
+.sec-title small{font-size:12px;font-weight:600;color:var(--ink2);background:#fff;border:1px solid #e0e7ff;border-radius:99px;padding:2px 10px}
+
+/* Kartu KPI & volume: latar tint, aksen sudut, angka tegas */
+.kpi,.vol{position:relative;overflow:hidden;border-radius:18px;padding:16px 16px 14px;min-height:112px;transition:transform .18s ease,box-shadow .18s ease;border:1px solid #eef2ff}
+.kpi::after,.vol::after{content:"";position:absolute;right:-26px;top:-26px;width:96px;height:96px;border-radius:50%;background:radial-gradient(circle,var(--glow,rgba(99,102,241,.14)),transparent 70%);pointer-events:none}
+.kpi:hover,.vol:hover{transform:translateY(-2px);box-shadow:0 14px 30px rgba(67,56,202,.12)}
+.vol{border-top:none}
+.vol::before,.kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;border-radius:0 4px 4px 0;background:var(--bar,linear-gradient(180deg,#fb923c,#f97316))}
+.kpi.o{--bar:linear-gradient(180deg,#fb923c,#ea580c);--glow:var(--glow-o)}
+.kpi.g{--bar:linear-gradient(180deg,#2dd4bf,#0d9488);--glow:rgba(20,184,166,.16)}
+.kpi.a{--bar:linear-gradient(180deg,#a78bfa,#6d28d9);--glow:var(--glow-i)}
+.kpi.r{--bar:linear-gradient(180deg,#fb7185,#e11d48);--glow:rgba(244,63,94,.14)}
+.vol.o{--bar:linear-gradient(180deg,#fb923c,#ea580c);--glow:var(--glow-o)}
+.vol.g{--bar:linear-gradient(180deg,#2dd4bf,#0d9488);--glow:rgba(20,184,166,.16)}
+.vol.a{--bar:linear-gradient(180deg,#a78bfa,#6d28d9);--glow:var(--glow-i)}
+.vol.r{--bar:linear-gradient(180deg,#fb7185,#e11d48);--glow:rgba(244,63,94,.14)}
+.kpi-l,.vol-l{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--ink2)}
+.kpi-v,.vol-v{font-size:24px;font-weight:900;letter-spacing:-.02em;font-variant-numeric:tabular-nums;margin:6px 0 4px;color:var(--ink)}
+.kpi.o .kpi-v{color:#c2410c}.kpi.g .kpi-v{color:#0f766e}.kpi.a .kpi-v{color:#5b21b6}.kpi.r .kpi-v{color:#be123c}
+.kpi-s,.vol-s{font-size:12px;line-height:1.45;color:var(--ink2)}
+/* nilai kosong (—) tampil redup, bukan garis tebal */
+.kpi-v:empty::before,.vol-v:empty::before{content:"—";color:#cbd5e1}
+
+/* Kartu keuangan & risiko: warna dari garis atas diganti aksen sudut */
+.mini{border-radius:16px;border:1px solid #eef2ff;transition:transform .18s ease,box-shadow .18s ease}
+.mini:hover{transform:translateY(-2px);box-shadow:0 12px 26px rgba(67,56,202,.1)}
+
+/* Kartu konten: sudut lebih lembut, hover halus */
+.card{border-radius:18px;border:1px solid #eef2ff;box-shadow:0 8px 24px rgba(99,102,241,.06)}
+.card-head h3,.card h3{font-weight:800;color:var(--ink)}
+
+/* Filter: dropdown bergaya, bukan bawaan browser */
+.filters .select,.range-ctl .select,.range-ctl .input,.filter-card .select{appearance:none;-webkit-appearance:none;border-radius:12px;padding-right:34px;background-color:#fff;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%236366f1' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;border-color:#e0e7ff;font-weight:600;color:var(--ink)}
+.filters .select:hover,.range-ctl .select:hover{border-color:#a5b4fc}
+.filter-card{border-radius:16px;border:1px solid #eef2ff;background:linear-gradient(90deg,#fff,#faf5ff)}
+
+/* Tab analisa: segmented pill yang jelas */
+.tabs-card{border-radius:16px;border:1px solid #eef2ff;background:#fff;padding:10px 12px}
+.tabs-lbl{font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#6366f1;margin-right:4px}
+.tab{border-radius:99px;border:1px solid #e0e7ff;background:#fff;color:#4338ca;font-weight:700;transition:background .15s,color .15s,box-shadow .15s}
+.tab:hover{background:#eef2ff}
+.tab.on{background:linear-gradient(135deg,#818cf8,#6366f1 60%,#7c3aed);color:#fff;box-shadow:0 8px 18px rgba(99,102,241,.28);border-color:transparent}
+
+/* Kartu toko */
+.store-card{border-radius:18px;border:1px solid #eef2ff;box-shadow:0 8px 22px rgba(15,23,42,.05);transition:transform .18s ease,box-shadow .18s ease}
+.store-card:hover{transform:translateY(-2px);box-shadow:0 14px 30px rgba(67,56,202,.11)}
+
+@media (max-width:640px){
+ .kpi,.vol{min-height:0;padding:14px}
+ .kpi-v,.vol-v{font-size:20px}
+ .sec-title{font-size:14px;margin:16px 0 8px}
+}
+.vol.o,.vol.g,.vol.a,.vol.r{border-top:1px solid #eef2ff}
