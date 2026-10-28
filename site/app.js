@@ -206,7 +206,7 @@ const PAGE={
  coverage:['Cakupan SKU','Setiap SKU wajib ter-SO sebelum boleh di-SO lagi dalam periode ini'],
  validation:['Validasi SPV','Review hasil counting toko, validasi selisih, lalu approve SO'],
  export:['Export & Pembersihan','Export hasil SO APPROVED ke CSV, lalu bersihkan detail dari database'],
- upload:['Upload Inventory','Ganti inventory aktif toko. System qty SO yang berjalan ikut diperbarui'],
+ upload:['Upload Inventory','Ganti inventory aktif toko. System qty SO yang berjalan ikut diperbarui sampai SUBMITTED'],
  ba:['Berita Acara','Approval berjenjang SPV lalu Manager, dan checklist adjustment per BA'],
  admin:['Manajemen Akses','Aktivasi user, SPV Mapping per toko, dan audit aktivitas']};
 // Store: Dashboard, Schedule (lihat), Counting, Upload. SPV: semua kecuali Manajemen Akses. Admin: semua.
@@ -625,7 +625,7 @@ async function renderScope(){
  const modeSeg=`<div class="field"><span>Cara SO *</span><div class="seg">${modes.map(([v,l])=>`<button class="${b.scopeMode===v?'on':''}" data-act="b-mode" data-v="${v}">${l}</button>`).join('')}</div></div>`;
  let body='';
  if(b.scopeMode==='ALL'){
-  body=`<div class="scope-box"><b>Scope: seluruh SKU inventory toko</b><p class="small muted">Stok sistem diambil saat SO dimulai (Proses) dan ikut diperbarui jika inventory di-upload ulang, sampai SO di-approve SPV. Pilih Category & Warna atau Bagi per Tim / POS bila SO hanya sebagian.</p></div>`;
+  body=`<div class="scope-box"><b>Scope: seluruh SKU inventory toko</b><p class="small muted">Stok sistem diambil saat SO dimulai (Proses) dan ikut diperbarui jika inventory di-upload ulang, sampai SO di-SUBMIT store. Setelah SUBMIT, system dikunci. Pilih Category & Warna atau Bagi per Tim / POS bila SO hanya sebagian.</p></div>`;
  }else if(b.scopeMode==='SCOPE'){
   body=`<div class="scope-box">
     <div class="scope-head"><b>Category & Warna</b>
@@ -713,7 +713,7 @@ async function updatePreview(){
    ${b.scopeMode==='TEAMS'&&teamRes?`<div class="team-summary">${teamRes.teams.map(t=>`<div><span>${escapeHTML(t.name)}</span><b>${n(t.count)} SKU</b></div>`).join('')}</div>`:''}
    ${err?`<div class="note warning">${escapeHTML(err)}</div>`:''}
    ${info.sample?.length?`<div class="sku-cloud">${info.sample.map(s=>`<span class="sku-chip mono">${escapeHTML(s)}</span>`).join('')}${info.count>info.sample.length?`<span class="small muted">+${n(info.count-info.sample.length)} lainnya</span>`:''}</div>`:''}
-   <div class="note info small">Stok sistem diambil saat SO dimulai (Proses). Jika inventory di-upload ulang, system ikut diperbarui sampai SO di-approve SPV.</div>
+   <div class="note info small">Stok sistem diambil saat SO dimulai (Proses). Jika inventory di-upload ulang, system ikut diperbarui sampai SO di-SUBMIT. Setelah SUBMIT, system dikunci dan hanya bisa diubah SPV/Admin di menu Validasi.</div>
  </div>`;
 }
 ACT['b-save']=async()=>{
@@ -1035,12 +1035,15 @@ async function loadValidation(){
  const editable=st==='SUBMITTED';
  const rowHTML=x=>{const reason=x.spv_note||x.store_note||'';const delta=x.delta==null?'—':signed(x.delta);return `<tr data-sku="${escapeHTML(x.sku)}">
    <td class="nm"><div class="nm-sub">${nameBadge(x.name,x.category)}${x.team?`<span class="team-tag">${escapeHTML(x.team)}</span>`:''}</div></td>
-   <td class="num sys-cell">${n(x.system)}</td>
-   ${POS.map(([k])=>`<td class="num">${x[k]==null?'—':n(x[k])}</td>`).join('')}
+   ${editable
+     ?`<td class="num sys-cell"><input class="input count-num" data-change="val-field" data-f="system" type="number" min="0" step="1" inputmode="numeric" value="${x.system??''}"/></td>`
+     :`<td class="num sys-cell">${n(x.system)}</td>`}
+   ${POS.map(([k])=>editable
+     ?`<td class="num"><input class="input count-num" data-change="val-field" data-f="${k}" type="number" min="0" step="1" inputmode="numeric" value="${x[k]??''}"/></td>`
+     :`<td class="num">${x[k]==null?'—':n(x[k])}</td>`).join('')}
    <td class="num"><b>${x.total==null?'—':n(x.total)}</b></td>
    <td class="st-cell">${statusCell(x.status,reason)}<span class="delta num">${delta}</span></td>
-   <td><input class="input reason-in" data-change="val-field" data-f="reason" maxlength="500" placeholder="Alasan" value="${escapeHTML(reason)}" ${editable?'':'disabled'}/></td>
-   <td><div class="qty-wrap"><input class="input count-num spvqty" data-change="val-field" data-f="qty" type="number" min="0" step="1" inputmode="numeric" value="${x.validated_qty??''}" ${editable?'':'disabled'}/>${editable?'<button class="calc-btn" data-act="calc-open" data-label="SPV Qty">🧮</button>':''}</div></td></tr>`};
+   <td><input class="input reason-in" data-change="val-field" data-f="reason" maxlength="500" placeholder="Alasan" value="${escapeHTML(reason)}" ${editable?'':'disabled'}/></td></tr>`};
  $('#content').innerHTML=`<div class="crumb"><button class="btn ghost" data-act="val-back">← Daftar SO</button><span class="muted small">${escapeHTML(labelStore(state.store)||'')}</span></div>
  <div class="mini-row">${mini('','Total SKU',n(sum.total_skus),'Seluruh SKU pada SO')}${mini('o','Variance',n(variance),'SKU selisih')}${mini('g','SKU Accuracy',P(acc),'tally / (tally + variance)')}${mini('a','Belum Lengkap',n(sum.missing_skus),'Posisi belum lengkap')}${mini('r','Blokir Approve',n(sum.blocking_skus),'Approve diblokir bila > 0')}</div>
  ${(sum.blocking_skus||0)>0?`<div class="note warning">${n(sum.blocking_skus)} SKU belum lengkap atau selisih belum beralasan. Approve diblokir sampai diperbaiki.</div>`:''}
@@ -1053,7 +1056,7 @@ async function loadValidation(){
     <button class="${v.filter==='ALL'?'on':''}" data-act="val-filter" data-v="ALL">Semua (${n(sum.total_skus)})</button>
    </div>
    <input id="valSearch" class="input grow" placeholder="Cari item / nama" value="${escapeHTML(v.search)}"/>${btn('Cari','val-find','outline')}${(v.search||v.filter!=='VARIANCE')?'<button class="btn ghost sm" data-act="val-clear">✕ Clear</button>':''}</div>
-  <div class="tablewrap"><table id="valTable" class="val-table"><thead><tr><th>Item & Warna</th><th class="num">System</th>${POS.map(([,l])=>`<th class="num">${l}</th>`).join('')}<th class="num">Total Store</th><th>Status</th><th>Alasan</th><th>SPV Qty</th></tr></thead><tbody>${data.items.map(rowHTML).join('')||'<tr><td colspan="10" class="empty">Tidak ada SKU.</td></tr>'}</tbody></table></div>
+  <div class="tablewrap"><table id="valTable" class="val-table"><thead><tr><th>Item & Warna</th><th class="num">System</th>${POS.map(([,l])=>`<th class="num">${l}</th>`).join('')}<th class="num">Total Store</th><th>Status</th><th>Alasan</th></tr></thead><tbody>${data.items.map(rowHTML).join('')||'<tr><td colspan="9" class="empty">Tidak ada SKU.</td></tr>'}</tbody></table></div>
   <div class="pager"><span class="small muted">${n(data.total_filtered?v.offset+1:0)}–${n(Math.min(v.offset+50,data.total_filtered))} / ${n(data.total_filtered)} SKU</span><div class="row">${btn('← Sebelumnya','val-prev','outline')}${btn('Berikutnya →','val-next','outline')}</div></div>
   <div class="footerhint">Alasan dan SPV Qty tersimpan otomatis saat diubah. Untuk SKU selisih, alasan wajib diisi sebelum Approve. Jika SPV Qty kosong, sistem memakai total fisik Store.</div>
  </div>`;
@@ -1062,10 +1065,11 @@ renderPresence();
 ACT['val-clear']=async()=>{const v=state.validation;v.search='';v.filter='VARIANCE';v.offset=0;await loadValidation()};
 CHG['val-field']=async el=>{
  const tr=el.closest('tr[data-sku]');const v=state.validation;if(!tr||!v.data)return;
- const q=tr.querySelector('.spvqty').value,note=tr.querySelector('.reason-in').value.trim();
- if(q!==''&&!/^\d+$/.test(q))throw Error('Qty harus bilangan bulat >=0.');
+ const val=f=>{const q=tr.querySelector(`[data-f="${f}"]`)?.value??'';if(q!==''&&!/^\d+$/.test(q))throw Error('Qty harus bilangan bulat >=0.');return q===''?null:Number(q)};
+ const sys=val('system');if(sys==null)throw Error('System qty wajib diisi.');
+ const note=tr.querySelector('.reason-in').value.trim();
  tr.classList.add('row-saving');
- try{await rpc('validate_line',{p_cycle:v.data.cycle_id,p_sku:tr.dataset.sku,p_qty:q===''?null:Number(q),p_note:note});toast('Tersimpan: '+tr.dataset.sku);await loadValidation()}
+ try{await rpc('validate_edit',{p_cycle:v.data.cycle_id,p_sku:tr.dataset.sku,p_system:sys,p_display:val('display'),p_reject:val('reject'),p_rak_utama:val('rak_utama'),p_rak_cadangan:val('rak_cadangan'),p_note:note});toast('Tersimpan: '+tr.dataset.sku);await loadValidation()}
  finally{tr.classList.remove('row-saving')}
 };
 ACT['val-filter']=async el=>{const v=state.validation;v.filter=el.dataset.v;v.offset=0;await loadValidation()};
@@ -1150,7 +1154,7 @@ ACT['exp-archive']=async el=>{
 async function showUpload(){
  const s=current();
  $('#content').innerHTML=`<div class="card">
-  <div class="card-head"><div><h3>Upload Inventory</h3><p class="muted small">File CSV mengganti inventory aktif toko. Inventory tidak dikunci: system qty SO yang sedang berjalan ikut diperbarui.</p></div>
+  <div class="card-head"><div><h3>Upload Inventory</h3><p class="muted small">File CSV mengganti inventory aktif toko. Inventory tidak dikunci: system qty SO yang sedang berjalan (COUNTING/RECOUNT) ikut diperbarui. SO yang sudah SUBMITTED dikunci.</p></div>
    ${canManage()?`<select class="input select" data-change="up-store">${storeOptions(state.store,false)}</select>`:`<span class="chip blue"><i></i>${escapeHTML(labelStore(state.store))}</span>`}</div>
   <div class="note warning">Cost/HPP harus berasal dari sumber resmi agar Value Accuracy valid.</div>
   <label class="dropzone"><b>⬆ Pilih File CSV Inventory Summary</b><small>Name - Variant, Category, Ending. Kolom SKU, Cost, dan Harga Retail opsional.</small><input type="file" id="fileInput" accept=".csv,text/csv" data-change="file-pick"/></label>
