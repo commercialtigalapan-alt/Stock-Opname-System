@@ -950,3 +950,36 @@ body{font-size:13.5px;background:radial-gradient(900px 420px at 100% -10%,#fde4c
  .kpis,.vols{grid-template-columns:minmax(0,1fr)}
  .top-actions .btn{flex:1 1 auto}
 }
+
+/* ===== v7: halaman login modern ===== */
+.lg-bg{min-height:100vh;min-height:100dvh;display:grid;place-items:center;padding:20px;background:radial-gradient(700px 500px at 10% 0%,rgba(251,146,60,.35),transparent 60%),radial-gradient(700px 500px at 100% 100%,rgba(236,72,153,.35),transparent 60%),linear-gradient(160deg,#312e81 0%,#6d28d9 55%,#9d174d 120%)}
+.lg-card{width:min(420px,100%);background:rgba(255,255,255,.96);border-radius:24px;padding:32px 28px 24px;box-shadow:0 30px 60px rgba(15,23,42,.35);display:flex;flex-direction:column;gap:14px;box-sizing:border-box}
+.lg-brand{display:flex;align-items:center;gap:12px}
+.lg-logo{width:52px;height:52px;object-fit:contain;border-radius:14px;background:#fff;padding:4px;box-shadow:0 8px 18px rgba(67,56,202,.18);border:1px solid #e0e7ff}
+.lg-brand strong{display:block;font-size:15px;color:#1e1b4b;letter-spacing:.01em}
+.lg-brand span{display:block;font-size:12px;color:#6366f1;font-weight:700;margin-top:2px}
+.lg-title{margin:10px 0 0;font-size:26px;font-weight:900;color:#0f172a;letter-spacing:-.01em}
+.lg-sub{margin:0;color:#64748b;font-size:13.5px}
+.lg-alert{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;border-radius:12px;padding:10px 12px;font-size:12.5px;font-weight:600}
+.lg-form{display:flex;flex-direction:column;gap:14px;margin-top:4px}
+.lg-field{display:flex;flex-direction:column;gap:6px}
+.lg-field span{font-size:12px;font-weight:800;color:#334155;letter-spacing:.02em}
+.lg-input{position:relative;display:flex;align-items:center}
+.lg-input>i{position:absolute;left:14px;color:#818cf8;display:flex;pointer-events:none}
+.lg-input input{width:100%;box-sizing:border-box;height:48px;border:1.5px solid #e2e8f0;border-radius:14px;background:#f8fafc;padding:0 44px 0 44px;font-size:14.5px;color:#0f172a;transition:.15s}
+.lg-input input::placeholder{color:#94a3b8}
+.lg-input input:focus{outline:none;border-color:#818cf8;background:#fff;box-shadow:0 0 0 4px rgba(129,140,248,.2)}
+.lg-eye{position:absolute;right:8px;width:34px;height:34px;border:0;border-radius:10px;background:transparent;color:#64748b;cursor:pointer;display:grid;place-items:center}
+.lg-eye:hover{background:#eef2ff;color:#4338ca}
+.lg-submit{height:50px;border:0;border-radius:14px;background:linear-gradient(135deg,#fb923c,#f97316 55%,#ea580c);color:#fff;font-size:15px;font-weight:800;cursor:pointer;box-shadow:0 12px 24px rgba(249,115,22,.3);transition:transform .15s,box-shadow .15s}
+.lg-submit:hover{transform:translateY(-1px);box-shadow:0 16px 28px rgba(249,115,22,.35)}
+.lg-submit:disabled{opacity:.7;cursor:wait;transform:none}
+.lg-divider{display:flex;align-items:center;gap:10px;color:#94a3b8;font-size:12px}
+.lg-divider::before,.lg-divider::after{content:"";flex:1;height:1px;background:#e2e8f0}
+.lg-ghost{height:46px;border:1.5px solid #c7d2fe;border-radius:14px;background:#fff;color:#4338ca;font-weight:800;font-size:14px;cursor:pointer}
+.lg-ghost:hover{background:#eef2ff}
+.lg-foot{margin:4px 0 0;text-align:center;font-size:12px;color:#94a3b8}
+@media (max-width:480px){
+ .lg-card{padding:26px 20px 20px;border-radius:20px}
+ .lg-title{font-size:23px}
+}

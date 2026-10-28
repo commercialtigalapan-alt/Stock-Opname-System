@@ -171,8 +171,25 @@ CHG['rng']=async el=>{
 /* ---------- auth & shell ---------- */
 function loginView(message=''){
  state.me=null;
- wrap(`<section class="login-bg"><div class="login-card"><div class="brand"><img class="logo-img" src="logo.png" alt="Tigalapan OPR Division"/><div><strong>TIGALAPAN INDONESIA<small>STOCK OPNAME • SUPABASE</small></strong></div></div><h1>Masuk aplikasi SO</h1><p class="small muted">Masuk menggunakan akun yang telah terdaftar di Supabase Auth. Admin harus mengaktifkan role serta toko Anda.</p><form id="loginForm" class="login-form"><div class="field"><label>Email</label><input class="input" id="email" type="email" autocomplete="email" required placeholder="alamat@gmail.com"/></div><div class="field"><label>Password</label><input class="input" id="password" type="password" minlength="6" autocomplete="current-password" required placeholder="Password akun SO"/></div><div class="login-actions"><button class="btn primary" type="submit">Masuk</button><button class="btn" id="signUpBtn" type="button">Daftar akun</button></div></form><p class="footerhint">${escapeHTML(message||'Akun baru belum dapat membaca data sampai disetujui Admin.')}</p></div></section>`);
- $('#loginForm').addEventListener('submit',async e=>{e.preventDefault();const email=$('#email').value.trim(),password=$('#password').value;try{const {error}=await sb.auth.signInWithPassword({email,password});if(error)throw error;await start()}catch(ex){toast(ex.message,true)}});
+ const eye='<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+ const mail='<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>';
+ const lock='<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
+ wrap(`<section class="lg-bg"><div class="lg-card">
+  <div class="lg-brand"><img class="lg-logo" src="logo.png" alt="Tigalapan"/><div><strong>Tigalapan Indonesia</strong><span>Stock Opname System</span></div></div>
+  <h1 class="lg-title">Selamat datang</h1>
+  <p class="lg-sub">Masuk untuk melanjutkan stock opname.</p>
+  ${message?`<div class="lg-alert">${escapeHTML(message)}</div>`:''}
+  <form id="loginForm" class="lg-form" novalidate>
+   <label class="lg-field"><span>Email</span><div class="lg-input"><i>${mail}</i><input id="email" type="email" autocomplete="email" required placeholder="nama@email.com"/></div></label>
+   <label class="lg-field"><span>Password</span><div class="lg-input"><i>${lock}</i><input id="password" type="password" minlength="6" autocomplete="current-password" required placeholder="Masukkan password"/><button type="button" class="lg-eye" id="pwToggle" aria-label="Tampilkan password">${eye}</button></div></label>
+   <button class="lg-submit" type="submit" id="loginBtn">Masuk</button>
+  </form>
+  <div class="lg-divider"><span>atau</span></div>
+  <button class="lg-ghost" id="signUpBtn" type="button">Daftar akun baru</button>
+  <p class="lg-foot">Akun baru perlu diaktifkan Admin sebelum dapat digunakan.</p>
+ </div></section>`);
+ $('#pwToggle').addEventListener('click',()=>{const i=$('#password');const show=i.type==='password';i.type=show?'text':'password';$('#pwToggle').setAttribute('aria-label',show?'Sembunyikan password':'Tampilkan password')});
+ $('#loginForm').addEventListener('submit',async e=>{e.preventDefault();const email=$('#email').value.trim(),password=$('#password').value;if(!email||!password){toast('Isi email dan password.',true);return}const btn=$('#loginBtn');btn.disabled=true;btn.textContent='Memproses…';try{const {error}=await sb.auth.signInWithPassword({email,password});if(error)throw error;await start()}catch(ex){toast(ex.message,true);btn.disabled=false;btn.textContent='Masuk'}});
  $('#signUpBtn').addEventListener('click',async()=>{const email=$('#email').value.trim(),password=$('#password').value;if(!email||password.length<6){toast('Isi email dan password minimal 6 karakter.',true);return}const {error}=await sb.auth.signUp({email,password,options:{emailRedirectTo:location.href.split('?')[0]}});toast(error?error.message:'Pendaftaran diproses. Minta Admin mengaktifkan akun.',!!error)});
 }
 async function start(){
@@ -1180,7 +1197,7 @@ async function showAdmin(){
  const spvs=users.filter(x=>x.role==='spv');
  $('#content').innerHTML=`<div class="card">
    <div class="card-head"><h3>1. Aktivasi Akun Baru</h3><span class="muted small">${n(unknown.length)} akun menunggu</span></div>
-   <p class="small muted">Admin memilih role dan toko untuk akun yang sudah terdaftar di Supabase Auth.</p>
+   <p class="small muted">Admin memilih role dan toko untuk akun yang sudah terdaftar di sistem.</p>
    <div class="toolbar"><select class="input select grow" id="newUser"><option value="">Pilih akun belum aktif</option>${unknown.map(x=>`<option value="${escapeHTML(x.id)}">${escapeHTML(x.email)}</option>`).join('')}</select><select class="input select" id="newRole"><option value="store">STORE</option><option value="spv">SPV</option><option value="admin">ADMIN</option></select><select class="input select" id="newStore"><option value="">Pilih toko (khusus Store)</option>${state.stores.map(s=>`<option value="${escapeHTML(s.code)}">${escapeHTML(s.name)}</option>`).join('')}</select><input class="input grow" id="newName" maxlength="80" placeholder="Nama lengkap (opsional)"/>${btn('Aktifkan User','activate-user','primary')}</div>
   </div>
   <div class="card"><div class="card-head"><h3>2. Akun Aktif</h3><span class="muted small">${n(users.length)} akun</span></div>
