@@ -986,7 +986,7 @@ async function loadValidation(){
  ${(sum.blocking_skus||0)>0?`<div class="note warning">${n(sum.blocking_skus)} SKU belum lengkap atau selisih belum beralasan. Approve diblokir sampai diperbaiki.</div>`:''}
  <div class="card">
   <div class="card-head"><div class="row"><h3>Detail Validasi</h3>${chip(st)}<span class="mono muted small">${escapeHTML(String(data.cycle_id).slice(0,8))}</span></div>
-   <div class="row">${editable?btn('Recount','val-recount','danger')+btn('Approve SO','val-approve','primary'):''}${st==='APPROVED'&&!data.archived?btn('Export CSV','val-export','dark'):''}</div></div>
+   <div class="row">${editable?btn('Recount','val-recount','danger')+btn('Approve SO','val-approve','primary'):''}${st==='APPROVED'&&!data.archived?btn('Export CSV','val-export','dark'):''}${st==='APPROVED'&&isAdmin()?btn('Hapus Permanen','so-hard-del','danger',{id:data.cycle_id}):''}</div></div>
   <div class="toolbar">
    <div class="seg" role="tablist" aria-label="Tampilan SKU">
     <button class="${v.filter==='VARIANCE'?'on':''}" data-act="val-filter" data-v="VARIANCE">Variance (${n(sum.variance_skus)})</button>
@@ -1061,7 +1061,7 @@ async function showExport(){
     <td><b class="mono">${escapeHTML(r.no)}</b></td><td>${escapeHTML(r.store_name)}</td><td>${fmtDate(r.planned_date)}</td><td>${r.so_type==='PARTIAL'?'PARTIAL':'GRAND'}</td>
     <td class="num">${n(r.scope_count)}</td><td class="num">${n(r.tally)}</td><td class="num">${n(r.variance)}</td>
     <td>${r.archived?chip('APPROVED','Dibersihkan'):chip('APPROVED')}</td>
-    <td class="actions">${r.archived?'<small class="muted">Detail dihapus; ringkasan tersimpan</small>':`${btn('⤓ Export','exp-csv','dark',{id:r.id})}${canManage()?btn('Bersihkan','exp-archive','danger',{id:r.id}):''}`}</td></tr>`).join('')||'<tr><td colspan="10" class="empty">Belum ada SO APPROVED pada filter ini.</td></tr>'}</tbody></table></div>
+    <td class="actions">${isAdmin()?btn('Hapus Permanen','so-hard-del','danger',{id:r.id}):''}${r.archived?'<small class="muted">Detail dihapus; ringkasan tersimpan</small>':`${btn('⤓ Export','exp-csv','dark',{id:r.id})}${canManage()?btn('Bersihkan','exp-archive','danger',{id:r.id}):''}`}</td></tr>`).join('')||'<tr><td colspan="10" class="empty">Belum ada SO APPROVED pada filter ini.</td></tr>'}</tbody></table></div>
  </div>`;
 }
 CHG['exp-store']=async()=>{state.exp.store=$('.filter-card select[data-change="exp-store"]').value;state.exp.sel=new Set();await showExport()};
@@ -1249,4 +1249,16 @@ ACT['cov-sync-apply']=async()=>{
  if(!d.changed){$('#covSync').textContent=covSyncText(d);return}
  if(!confirm('Terapkan sinkronisasi rasio?\n'+covSyncText(d)))return;
  await rpc('rounds_resync',{p_store:c.store,p_apply:true});toast('Rasio disinkronkan');await showCoverage();
+};
+
+/* ---------- Hapus permanen SO APPROVED yang salah (Admin, tanpa export) ---------- */
+ACT['so-hard-del']=async el=>{
+ const id=el.dataset.id;
+ if(!confirm('HAPUS PERMANEN SO ini dari database dan aplikasi?\n\nDetail SKU dihapus, rasio SKU dikembalikan, dan SO tidak lagi dihitung di dashboard. Tidak perlu export. Lanjutkan?'))return;
+ const out=await rpc('hard_delete',{p_cycles:[id]});
+ toast(out.archived_rounds_not_reverted
+  ?'SO dihapus. SO ini sudah dibersihkan, jadi rasio SKU-nya perlu disinkronkan lewat Cakupan SKU.'
+  :'SO dihapus permanen');
+ state.validation.open=false;state.validation.data=null;
+ await refreshDashboard();await render();
 };
