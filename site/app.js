@@ -205,6 +205,7 @@ const PAGE={
  validation:['Validasi SPV','Review hasil counting toko, validasi selisih, lalu approve SO'],
  export:['Export & Pembersihan','Export hasil SO APPROVED ke CSV, lalu bersihkan detail dari database'],
  upload:['Upload Inventory','Ganti inventory aktif toko. System qty SO yang berjalan ikut diperbarui'],
+ ba:['Berita Acara','Approval berjenjang SPV lalu Manager, dan checklist adjustment per BA'],
  admin:['Manajemen Akses','Aktivasi user, SPV Mapping per toko, dan audit aktivitas']};
 // Store: Dashboard, Schedule (lihat), Counting, Upload. SPV: semua kecuali Manajemen Akses. Admin: semua.
 function menu(){const p=state.me.role;return [
@@ -213,6 +214,7 @@ function menu(){const p=state.me.role;return [
  ['count','Counting','☑','STOCK OPNAME'],
  ['coverage','Cakupan SKU','◎','STOCK OPNAME'],
  ...(p!=='store'?[['validation','Validasi SPV','✓','STOCK OPNAME']]:[]),
+ ...(p!=='store'?[['ba','Berita Acara','§','STOCK OPNAME']]:[]),
  ...(p!=='store'?[['export','Export & Pembersihan','⤓','REPORT & SETTINGS']]:[]),
  ['upload','Upload Inventory','⇧','INVENTORY & PLANNING'],
  ...(p==='admin'?[['admin','Manajemen Akses','⚙','REPORT & SETTINGS']]:[])]}
@@ -252,7 +254,7 @@ function updateNav(){const el=$('#nav');if(!el)return;let last='',html='';const 
  }
  el.innerHTML=html;
  paintNavPresence();
- el.querySelectorAll('[data-page]').forEach(b2=>b2.onclick=async()=>{state.page=b2.dataset.page;state.validation.open=false;state.count.open=false;state.count.sel=new Set();await render()});
+ el.querySelectorAll('[data-page]').forEach(b2=>b2.onclick=async()=>{state.page=b2.dataset.page;state.validation.open=false;if(state.ba)state.ba.open=null;state.count.open=false;state.count.sel=new Set();await render()});
 }
 const loadingHTML=(t='Memuat data…')=>`<div class="card loading-card"><span class="spinner"></span>${t}</div>`;
 async function render(){
@@ -267,6 +269,7 @@ async function render(){
   if(state.page==='count')await showCount();
   if(state.page==='coverage')await showCoverage();
   if(state.page==='validation')await showValidation();
+  if(state.page==='ba')await showBA();
   if(state.page==='export')await showExport();
   if(state.page==='upload')await showUpload();
   if(state.page==='admin')await showAdmin();
@@ -1041,7 +1044,7 @@ async function loadValidation(){
  ${(sum.blocking_skus||0)>0?`<div class="note warning">${n(sum.blocking_skus)} SKU belum lengkap atau selisih belum beralasan. Approve diblokir sampai diperbaiki.</div>`:''}
  <div class="card">
   <div class="card-head"><div class="row"><h3>Detail Validasi</h3>${chip(st)}<span class="mono muted small">${escapeHTML(String(data.cycle_id).slice(0,8))}</span></div>
-   <div class="row">${editable?btn('Recount','val-recount','danger')+btn('Approve SO','val-approve','primary'):''}${st==='APPROVED'&&!data.archived?btn('Export CSV','val-export','dark'):''}${st==='APPROVED'&&isAdmin()?btn('Hapus Permanen','so-hard-del','danger',{id:data.cycle_id}):''}</div></div>
+   <div class="row">${editable?btn('Recount','val-recount','danger')+btn('Approve SO','val-approve','primary'):''}${st==='APPROVED'?btn('Buat BA','ba-create','primary',{id:data.cycle_id}):''}${st==='APPROVED'&&!data.archived?btn('Export CSV','val-export','dark'):''}${st==='APPROVED'&&isAdmin()?btn('Hapus Permanen','so-hard-del','danger',{id:data.cycle_id}):''}</div></div>
   <div class="toolbar">
    <div class="seg" role="tablist" aria-label="Tampilan SKU">
     <button class="${v.filter==='VARIANCE'?'on':''}" data-act="val-filter" data-v="VARIANCE">Variance (${n(sum.variance_skus)})</button>
@@ -1332,6 +1335,7 @@ function presActivity(){
  }
  if(pg==='validation')return state.validation.open?'Validasi SPV (detail SO)':'Daftar validasi SPV';
  if(pg==='schedule')return state.builder?'Membuat / mengubah jadwal SO':'Melihat jadwal SO';
+ if(pg==='ba')return state.ba?.open?'Berita Acara (detail)':'Daftar Berita Acara';
  if(pg==='coverage')return 'Cakupan SKU';
  if(pg==='upload')return 'Upload inventory';
  if(pg==='export')return 'Export & pembersihan';
@@ -1418,3 +1422,69 @@ function paintRowBusy(){
   });
  });
 }
+
+// ===== Berita Acara (BA): approval berjenjang SPV lalu Manager, checklist adjust per BA =====
+const BA_MATCH={ALL:()=>true,WAIT_SPV:x=>!x.spv_at,WAIT_MGR:x=>!!x.spv_at&&!x.mgr_at,WAIT_ADJ:x=>!!x.mgr_at&&!x.adj_at,ADJUSTED:x=>!!x.adj_at};
+const BA_LABEL=[['ALL','Semua'],['WAIT_SPV','Menunggu SPV'],['WAIT_MGR','Menunggu Manager'],['WAIT_ADJ','Belum di-adjust'],['ADJUSTED','Sudah di-adjust']];
+const baState=()=>state.ba||(state.ba={status:'ALL',open:null,all:[]});
+const fmtDT=t=>t?new Date(t).toLocaleString('id-ID',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Makassar'})+' WITA':'—';
+async function showBA(){
+ const b=baState();
+ if(b.open)return loadBADetail();
+ const all=await rpc('ba_list',{p_store:null,p_status:'ALL',p_limit:500});
+ b.all=all;
+ const rows=all.filter(BA_MATCH[b.status]||BA_MATCH.ALL);
+ $('#content').innerHTML=`<div class="card">
+  <div class="card-head"><div><h3>Berita Acara SO</h3><p class="muted small">SPV menandatangani dahulu, lalu Manager menyetujui. Setelah disetujui, tandai BA jika data sudah di-adjust di sistem.</p></div><span class="chip blue"><i></i>${n(all.length)} BA</span></div>
+  <div class="ba-tabs">${BA_LABEL.map(([k,l])=>`<button class="tab ${b.status===k?'on':''}" data-act="ba-filter" data-k="${k}">${l} <b>${n(all.filter(BA_MATCH[k]).length)}</b></button>`).join('')}</div>
+  <div class="tablewrap"><table><thead><tr><th>No BA</th><th>Toko</th><th>Dibuat</th><th>SPV</th><th>Manager</th><th>Adjust</th><th>Aksi</th></tr></thead><tbody>
+  ${rows.map(x=>`<tr>
+   <td><b class="mono">${escapeHTML(x.ba_no)}</b></td>
+   <td>${escapeHTML(x.store_name)}</td>
+   <td class="small">${fmtDT(x.created_at)}</td>
+   <td>${x.spv_at?`<span class="chip green"><i></i>${escapeHTML(x.spv_name)}</span>`:'<span class="chip gray"><i></i>Menunggu</span>'}</td>
+   <td>${x.mgr_at?`<span class="chip green"><i></i>${escapeHTML(x.mgr_name)}</span>`:'<span class="chip gray"><i></i>Menunggu</span>'}</td>
+   <td><label class="ba-adj"><input type="checkbox" data-change="ba-adj" data-id="${escapeHTML(x.id)}" ${x.adj_at?'checked':''} ${x.mgr_at?'':'disabled'}/> ${x.adj_at?`Sudah · ${escapeHTML(x.adj_name||'')}`:(x.mgr_at?'Tandai sudah':'Setelah Manager')}</label></td>
+   <td>${btn('Detail','ba-open','ghost sm',{id:x.id})}</td></tr>`).join('')||'<tr><td colspan="7" class="empty">Tidak ada BA pada filter ini.</td></tr>'}
+  </tbody></table></div></div>`;
+}
+async function loadBADetail(){
+ const b=baState();
+ const d=await rpc('ba_get',{p_ba:b.open});
+ const h=d.header,s=d.summary||{},lines=d.lines||[],total=s.variance_count||0,role=state.me.role;
+ const canSpv=!h.spv_at&&(role==='spv'||role==='admin');
+ const canMgr=!h.mgr_at&&!!h.spv_at&&role==='admin';
+ const stamp=(at,name,empty)=>at?`<b>${escapeHTML(name||'')}</b><small>Ditandatangani secara elektronik · ${fmtDT(at)}</small>`:`<i class="muted">${empty}</i>`;
+ $('#content').innerHTML=`<div class="crumb no-print"><button class="btn ghost" data-act="ba-back">← Daftar BA</button></div>
+ <div class="card ba-actions no-print">
+  <div class="row"><b class="mono">${escapeHTML(h.ba_no)}</b>${h.adj_at?chip('TALLY','Sudah di-adjust'):chip('SUBMITTED',h.mgr_at?'Siap di-adjust':(h.spv_at?'Menunggu Manager':'Menunggu SPV'))}</div>
+  <div class="row">${canSpv?btn('Tanda tangan SPV','ba-sign','primary',{id:h.id,level:'SPV'}):''}${canMgr?btn('Setujui Manager','ba-sign','dark',{id:h.id,level:'MGR'}):''}${btn('Cetak / Simpan PDF','ba-print','ghost')}</div>
+ </div>
+ <article class="ba-doc" id="baPrint">
+  <header class="ba-head"><img src="logo.png" alt=""/><div><h2>BERITA ACARA STOCK OPNAME</h2><p class="mono">${escapeHTML(h.ba_no)}</p></div></header>
+  <table class="ba-meta"><tr><td>Toko</td><td>${escapeHTML(h.store_name)} (${escapeHTML(h.store_code)})</td><td>Tanggal SO</td><td>${fmtDT(h.started_at)}</td></tr>
+  <tr><td>Dibuat oleh</td><td>${escapeHTML(h.created_name||'')}</td><td>Tanggal BA</td><td>${fmtDT(h.created_at)}</td></tr></table>
+  <p class="ba-text">Telah dilakukan stock opname pada toko tersebut, dengan hasil sebagai berikut:</p>
+  <table class="ba-sum"><tbody>
+   <tr><td>Total SKU dihitung</td><td class="num">${n(s.total_skus)}</td><td>SKU sesuai sistem</td><td class="num">${n(s.tally_count)}</td></tr>
+   <tr><td>SKU selisih</td><td class="num">${n(s.variance_count)}</td><td>Net selisih qty</td><td class="num">${signed(s.net_qty)}</td></tr>
+   <tr><td>Nilai kekurangan</td><td class="num">${rp(s.missing_value)}</td><td>Nilai kelebihan</td><td class="num">${rp(s.surplus_value)}</td></tr>
+  </tbody></table>
+  ${total?`<p class="ba-text">Daftar SKU selisih${lines.length<total?` (menampilkan ${n(lines.length)} dari ${n(total)} SKU, urut selisih terbesar)`:''}:</p>
+  <div class="tablewrap ba-lines"><table><thead><tr><th>SKU</th><th>Nama item</th><th class="num">System</th><th class="num">Actual</th><th class="num">Selisih</th><th class="num">Nilai selisih</th></tr></thead><tbody>
+  ${lines.map(l=>`<tr><td class="mono">${escapeHTML(l.sku)}</td><td>${escapeHTML(l.item_name)}</td><td class="num">${n(l.system_qty)}</td><td class="num">${n(l.actual_qty)}</td><td class="num">${signed(l.diff_qty)}</td><td class="num">${rp(l.diff_qty*l.unit_cost,true)}</td></tr>`).join('')}
+  </tbody></table></div>`:'<p class="ba-text">Tidak ada selisih. Seluruh SKU sesuai dengan sistem.</p>'}
+  <div class="ba-sign">
+   <div><span>SPV Toko</span><div class="ba-stamp">${stamp(h.spv_at,h.spv_name,'Belum ditandatangani')}</div></div>
+   <div><span>Manager</span><div class="ba-stamp">${stamp(h.mgr_at,h.mgr_name,'Belum disetujui')}</div></div>
+  </div>
+  ${h.adj_at?`<p class="ba-adjnote">Sudah di-adjust di sistem oleh ${escapeHTML(h.adj_name||'')} · ${fmtDT(h.adj_at)}</p>`:''}
+ </article>`;
+}
+ACT['ba-open']=async el=>{baState().open=el.dataset.id;await render()};
+ACT['ba-back']=async()=>{baState().open=null;await render()};
+ACT['ba-filter']=async el=>{baState().status=el.dataset.k;await render()};
+ACT['ba-print']=async()=>window.print();
+ACT['ba-create']=async el=>{const r=await rpc('ba_create',{p_cycle:el.dataset.id});toast(r.existed?`BA sudah ada: ${r.ba_no}`:`BA dibuat: ${r.ba_no}`);const b=baState();b.open=r.id;state.validation.open=false;state.page='ba';await render()};
+ACT['ba-sign']=async el=>{const lv=el.dataset.level;if(!confirm(lv==='SPV'?'Tanda tangani BA ini sebagai SPV? Nama dan waktu Anda akan tercatat.':'Setujui BA ini sebagai Manager? Nama dan waktu Anda akan tercatat.'))return;await rpc('ba_sign',{p_ba:el.dataset.id,p_level:lv});toast('BA berhasil ditandatangani.');await render()};
+CHG['ba-adj']=async el=>{await rpc('ba_adjust',{p_ba:el.dataset.id,p_done:el.checked});toast(el.checked?'BA ditandai sudah di-adjust.':'Tanda adjust dibatalkan.');await render()};

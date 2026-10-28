@@ -983,3 +983,47 @@ body{font-size:13.5px;background:radial-gradient(900px 420px at 100% -10%,#fde4c
  .lg-card{padding:26px 20px 20px;border-radius:20px}
  .lg-title{font-size:23px}
 }
+
+/* ===== v8: Berita Acara (BA) ===== */
+.ba-tabs{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 12px}
+.ba-tabs .tab b{margin-left:4px}
+.ba-adj{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;white-space:nowrap}
+.ba-adj input{width:16px;height:16px;accent-color:#6366f1;cursor:pointer}
+.ba-adj input:disabled{cursor:not-allowed}
+.ba-actions{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.ba-actions .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ba-doc{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:26px 28px;max-width:920px;margin:0 auto;color:#111;box-sizing:border-box;width:100%}
+.ba-head{display:flex;align-items:center;gap:14px;border-bottom:2px solid #111;padding-bottom:12px}
+.ba-head img{width:56px;height:56px;object-fit:contain}
+.ba-head h2{margin:0;font-size:18px;letter-spacing:.04em}
+.ba-head p{margin:2px 0 0;font-size:13px}
+.ba-meta{width:100%;margin:14px 0;font-size:12.5px;border-collapse:collapse}
+.ba-meta td{padding:3px 6px;border:0;vertical-align:top}
+.ba-meta td:nth-child(odd){color:#555;width:16%;white-space:nowrap}
+.ba-text{font-size:12.5px;margin:10px 0}
+.ba-sum{width:100%;font-size:12.5px;border-collapse:collapse}
+.ba-sum td{border:1px solid #d1d5db;padding:5px 8px}
+.ba-sum td.num{text-align:right;font-weight:700}
+.ba-lines{margin-top:6px;overflow-x:auto}
+.ba-lines table{font-size:12px}
+.ba-sign{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:22px}
+.ba-sign>div{border:1px solid #d1d5db;border-radius:10px;padding:12px;min-height:96px;font-size:12.5px;box-sizing:border-box}
+.ba-sign>div>span{font-weight:800;color:#374151}
+.ba-stamp{margin-top:8px;display:grid;gap:2px}
+.ba-stamp small{color:#6b7280}
+.ba-adjnote{font-size:12px;color:#065f46;margin-top:14px}
+@media (max-width:640px){
+ .ba-doc{padding:16px}
+ .ba-sign{grid-template-columns:1fr}
+ .ba-meta td:nth-child(odd){width:auto}
+}
+@media print{
+ body{background:#fff!important}
+ .sidebar,.topbar,.no-print,.progress,.toast,.presence-panel{display:none!important}
+ .app{display:block!important}
+ .main,.content{display:block!important;padding:0!important;margin:0!important}
+ .ba-doc{border:0;box-shadow:none;padding:0;max-width:none}
+ .ba-lines{overflow:visible}
+ .ba-sum td,.ba-lines td,.ba-lines th{border-color:#999}
+ tr{break-inside:avoid}
+}
