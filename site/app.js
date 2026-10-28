@@ -1439,6 +1439,9 @@ async function showBA(){
  const picked=all.filter(x=>b.sel.has(x.id));
  const stores=[...new Map(all.map(x=>[x.store_code,x.store_name])).entries()];
  const approvedInView=rows.filter(x=>x.mgr_at).length;
+ const markSel=picked.filter(x=>x.mgr_at&&!x.adj_at).length;
+ const unmarkSel=picked.filter(x=>x.adj_at).length;
+ const markAll=rows.filter(x=>x.mgr_at&&!x.adj_at).length;
  const cleanable=picked.filter(x=>x.exported_at).length;
  const allOn=rows.length>0&&rows.every(x=>b.sel.has(x.id));
  $('#content').innerHTML=`<div class="card">
@@ -1450,6 +1453,9 @@ async function showBA(){
    <button class="btn dark" data-act="ba-export-sel" ${picked.length?'':'disabled'}>Unduh gabungan (HTML)</button>
    <button class="btn dark" data-act="ba-adj-csv-sel" ${picked.some(x=>x.mgr_at)?'':'disabled'}>Export CSV adjust dipilih (${n(picked.filter(x=>x.mgr_at).length)})</button>
    <button class="btn dark" data-act="ba-adj-csv-all" ${approvedInView?'':'disabled'}>Export CSV adjust semua di filter (${n(approvedInView)})</button>
+   <button class="btn primary" data-act="ba-mark" data-done="1" ${markSel?'':'disabled'}>Tandai adjust dipilih (${n(markSel)})</button>
+   <button class="btn" data-act="ba-mark" data-done="0" ${unmarkSel?'':'disabled'}>Batalkan tanda (${n(unmarkSel)})</button>
+   <button class="btn primary" data-act="ba-mark-all" ${markAll?'':'disabled'}>Tandai adjust semua di filter (${n(markAll)})</button>
    <button class="btn danger" data-act="ba-clean-sel" ${cleanable?'':'disabled'}>Bersihkan dari database (${n(cleanable)})</button>
   </div>
   <p class="small muted no-print">Alur: pilih BA → unduh gabungan dan simpan ke Google Drive → BA otomatis ditandai sudah diekspor → baru bisa dibersihkan.</p>
@@ -1543,6 +1549,13 @@ async function baAdjCsv(ids){
 }
 ACT['ba-adj-csv']=async()=>{await baAdjCsv([baState().open])};
 ACT['ba-adj-csv-sel']=async()=>{const b=baState();const ids=(b.all||[]).filter(x=>b.sel.has(x.id)&&x.mgr_at).map(x=>x.id);await baAdjCsv(ids)};
+async function baMark(ids,done){
+ if(!ids.length){toast('Tidak ada BA yang bisa diproses.',true);return}
+ const r=await rpc('ba_adjust_bulk',{p_bas:ids,p_done:done});
+ toast(`${n(r.done)} BA ${done?'ditandai sudah di-adjust':'tanda adjust dibatalkan'}${r.skipped?` (${n(r.skipped)} dilewati)`:''}.`);
+}
+ACT['ba-mark']=async el=>{const b=baState();const done=el.dataset.done==='1';const ids=(b.all||[]).filter(x=>b.sel.has(x.id)&&x.mgr_at&&(done?!x.adj_at:!!x.adj_at)).map(x=>x.id);await baMark(ids,done);await render()};
+ACT['ba-mark-all']=async()=>{const b=baState();const ids=baFiltered(b).filter(x=>x.mgr_at&&!x.adj_at).map(x=>x.id);if(!confirm(`Tandai ${n(ids.length)} BA sebagai sudah di-adjust?`))return;await baMark(ids,true);await render()};
 ACT['ba-adj-csv-all']=async()=>{const b=baState();await baAdjCsv(baFiltered(b).filter(x=>x.mgr_at).map(x=>x.id))};
 ACT['ba-download']=async()=>{await baDownload([baState().open]);await render()};
 ACT['ba-export-sel']=async()=>{const b=baState();await baDownload([...b.sel]);await render()};
