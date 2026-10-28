@@ -1439,6 +1439,10 @@ async function showBA(){
  const picked=all.filter(x=>b.sel.has(x.id));
  const useSel=picked.length>0;
  const scope=useSel?picked:rows;
+ const role=state.me.role;
+ const canSpv=role==='spv'||role==='admin',canMgr=role==='admin';
+ const cSpv=scope.filter(x=>!x.spv_at).length;
+ const cMgr=scope.filter(x=>x.spv_at&&!x.mgr_at&&x.spv_by!==state.me.id).length;
  const cnt={html:scope.length,csv:scope.filter(x=>x.mgr_at).length,mark:scope.filter(x=>x.mgr_at&&!x.adj_at).length,clean:picked.filter(x=>x.exported_at).length,unmark:picked.filter(x=>x.adj_at).length};
  const stores=[...new Map(all.map(x=>[x.store_code,x.store_name])).entries()];
  const allOn=rows.length>0&&rows.every(x=>b.sel.has(x.id));
@@ -1450,6 +1454,8 @@ async function showBA(){
   <div class="ba-bar no-print">
    <div class="ba-scope"><div><b>Berlaku untuk:</b> ${useSel?`${n(picked.length)} BA yang dipilih`:`semua ${n(rows.length)} BA di filter ini`}${useSel?`<button class="btn ghost sm" data-act="ba-clear-sel">Kosongkan pilihan</button>`:''}</div><small class="muted">Centang BA untuk memilih sebagian. Tanpa centang, aksi berlaku untuk semua BA di filter.</small></div>
    <div class="ba-acts">
+    ${canSpv?act('Tanda tangan SPV','sign-spv',cSpv,'primary'):''}
+    ${canMgr?act('Setujui Manager','sign-mgr',cMgr,'primary'):''}
     ${act('Unduh HTML gabungan','html',cnt.html,'dark')}
     ${act('Export CSV adjust','csv',cnt.csv,'dark')}
     ${act('Tandai adjust','mark',cnt.mark,'primary')}
@@ -1560,6 +1566,13 @@ ACT['ba-run']=async el=>{
  if(k==='html'){
   if(!picked.length&&!confirm(`Unduh ${n(scope.length)} BA dalam satu file dan tandai sudah diekspor?`))return;
   await baDownload(scope.map(x=>x.id));
+ }else if(k==='sign-spv'||k==='sign-mgr'){
+  const lv=k==='sign-spv'?'SPV':'MGR';
+  const ids=scope.filter(x=>lv==='SPV'?!x.spv_at:(x.spv_at&&!x.mgr_at&&x.spv_by!==state.me.id)).map(x=>x.id);
+  if(!ids.length)return toast('Tidak ada BA yang bisa ditandatangani pada cakupan ini.',true);
+  if(!confirm(`${lv==='SPV'?'Tanda tangani':'Setujui'} ${n(ids.length)} BA sebagai ${lv==='SPV'?'SPV':'Manager'}? Nama dan waktu Anda akan tercatat.`))return;
+  const r=await rpc('ba_sign_bulk',{p_bas:ids,p_level:lv});
+  toast(`${n(r.done)} BA ${lv==='SPV'?'ditandatangani SPV':'disetujui Manager'}${r.skipped?` (${n(r.skipped)} dilewati)`:''}.`);
  }else if(k==='csv'){
   await baAdjCsv(scope.filter(x=>x.mgr_at).map(x=>x.id));
  }else if(k==='mark'){
