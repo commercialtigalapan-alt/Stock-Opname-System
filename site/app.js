@@ -457,10 +457,10 @@ async function showSchedule(){
    ${btn('+ Partial SO','b-open','outline',{type:'PARTIAL'})}${btn('+ Grand SO','b-open','primary',{type:'GRAND'})}</div></div>
  <div class="card filter-card">${rangeControlHTML('sch',sc.range)}</div>
  <div class="note info">${isAdmin()||state.me.role==='spv'?'Jadwal per toko. SO yang sudah APPROVED tampil sesuai rentang tanggal yang dipilih.':'Jadwal SO toko Anda. Buat, ubah, atau hapus jadwal yang belum diproses, lalu klik Proses untuk memulai SO.'}</div>
- ${groups.size?[...groups.values()].map(g=>`<div class="card">
-   <div class="card-head"><h3>▣ ${escapeHTML(g.name)}</h3><span class="muted small">${n(g.rows.length)} SO</span></div>
+ ${groups.size?[...groups.values()].map(g=>{const run=g.rows.filter(r=>['COUNTING','RECOUNT'].includes(r.status)).length;const busy=g.rows.some(r=>['COUNTING','RECOUNT','SUBMITTED'].includes(r.status));return `<details class="card store-folder" ${busy?'open':''}>
+   <summary><span class="sf-name">📁 ${escapeHTML(g.name)}</span><span class="sf-meta">${n(g.rows.length)} SO${run?` · ${n(run)} sedang berjalan`:''}</span></summary>
    <div class="tablewrap"><table><thead><tr><th>SO</th><th>Tanggal</th><th>PIC</th><th>Status</th><th class="num">SKU</th><th>Action</th></tr></thead><tbody>${g.rows.map(r=>`<tr><td><b class="mono">${escapeHTML(r.no)}</b><br><small class="muted">${r.so_type==='PARTIAL'?'PARTIAL':'GRAND'}${r.start_time?' • '+escapeHTML(r.start_time.slice(0,5)):''}${r.team_map?' • per tim/POS':(r.scope_rule?' • category/warna':'')}</small></td><td>${fmtDate(r.planned_date)}</td><td>${escapeHTML(r.pic||'-')}</td><td>${chip(r.status)}</td><td class="num">${n(r.scope_count)}</td><td class="actions">${schActions(r)}</td></tr>`).join('')}</tbody></table></div>
-  </div>`).join(''):'<div class="card empty">Belum ada SO pada filter ini.'+' Klik + Partial SO atau + Grand SO untuk membuat jadwal.</div>'}`;
+  </details>`}).join(''):'<div class="card empty">Belum ada SO pada filter ini.'+' Klik + Partial SO atau + Grand SO untuk membuat jadwal.</div>'}`;
 }
 CHG['sch-filter']=async el=>{state.sch.store=el.value;await showSchedule()};
 ACT['sch-start']=async el=>{
@@ -834,7 +834,7 @@ ACT['c-bulk-del']=async()=>{
  state.count.sel=new Set();await render();
 };
 function uploadPanelHTML(s){
- return `<details class="card up-panel" id="upPanel"><summary><b>⬆ Upload Inventory</b><span class="muted small">Ganti inventory aktif toko. SO yang sudah SUBMITTED tidak ikut berubah.</span></summary>
+ return `<details class="card up-panel" id="upPanel" open><summary><b>⬆ Upload Inventory</b><span class="muted small">Ganti inventory aktif toko. SO yang sudah SUBMITTED tidak ikut berubah.</span></summary>
   <div class="up-body">
    ${canManage()?`<select class="input select" data-change="up-store">${storeOptions(state.store,false)}</select>`:`<span class="chip blue"><i></i>${escapeHTML(labelStore(state.store))}</span>`}
    <label class="dropzone"><b>⬆ Pilih File CSV Inventory Summary</b><small>Name - Variant, Category, Ending. Kolom SKU, Cost, dan Harga Retail opsional.</small><input type="file" id="fileInput" accept=".csv,text/csv" data-change="file-pick"/></label>

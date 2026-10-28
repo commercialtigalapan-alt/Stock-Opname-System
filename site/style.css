@@ -1138,3 +1138,14 @@ body{-webkit-font-smoothing:antialiased}
 .cyc-pill span{color:#64748b;font-weight:600}
 .cyc-pill.on{border-color:#f97316;background:#fff7ed}
 .cyc-pill.on span{color:#c2410c}
+
+/* v15: jadwal per toko sebagai folder yang bisa dilipat */
+.store-folder{padding:0;overflow:hidden}
+.store-folder>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 18px;background:linear-gradient(90deg,#fff7ed,#fff)}
+.store-folder>summary::-webkit-details-marker{display:none}
+.store-folder>summary::after{content:'▾';margin-left:auto;color:#94a3b8}
+.store-folder[open]>summary::after{content:'▴'}
+.store-folder[open]>summary{border-bottom:1px solid rgba(15,23,42,.08)}
+.sf-name{font-weight:800;font-size:16px;color:#1e1b4b}
+.sf-meta{font-size:13px;color:#64748b;font-weight:600}
+.store-folder>.tablewrap{margin:0}
