@@ -1190,7 +1190,8 @@ async function showCoverage(){
  const s2=d.summary||{};const pct=s2.total?Math.round(100*s2.sudah/s2.total):0;
  const mini=(cls,l,val,sub)=>`<div class="mini ${cls}"><small>${l}</small><b>${val}</b><span>${sub}</span></div>`;
  const filters=[['ALL','Semua'],['BELUM','Belum di-SO'],['SUDAH','Sudah di-SO'],['DIPILIH','Bisa dipilih'],['TERKUNCI','Terkunci']];
- $('#content').innerHTML=`<div class="card filter-card"><div class="filters">
+ $('#content').innerHTML=`${isAdmin()?`<div class="card"><div class="card-head"><h3>Sinkronisasi Rasio</h3><span class="muted small">Pakai jika ada SKU terkunci karena rasio dari SO yang sudah dihapus</span></div><div class="row">${btn('Cek Perubahan','cov-sync-check','outline')}${btn('Terapkan Sinkronisasi','cov-sync-apply','danger')}</div><div id="covSync" class="note info small">Klik Cek Perubahan untuk melihat rasio yang akan berubah sebelum diterapkan.</div></div>`:''}
+ <div class="card filter-card"><div class="filters">
    ${state.me.role!=='store'?`<select class="input select" data-change="cov-store">${storeOptions(c.store,false)}</select>`:`<span class="chip blue">${escapeHTML(labelStore(c.store))}</span>`}
    <input id="covSearch" class="input grow" placeholder="Cari SKU / nama item" value="${escapeHTML(c.search)}"/>
    ${btn('Cari','cov-find','outline')}${(c.search||c.filter!=='ALL')?'<button class="btn ghost sm" data-act="cov-clear">✕ Clear</button>':''}
@@ -1235,4 +1236,16 @@ ACT['cln-browser']=async()=>{
    const cid=k.slice('tsiSO_draft_'.length);if(!active.has(cid)){localStorage.removeItem(k);removed++}});
  }catch(e){}
  toast(`Draft browser dibersihkan: ${n(removed)} item`);
+};
+
+/* ---------- Sinkronisasi rasio (Admin): membuka SKU yang terkunci karena rasio SO yang sudah dihapus ---------- */
+const covSyncText=d=>d.changed
+ ?`Akan berubah: ${n(d.changed)} SKU. Contoh: ${(d.sample||[]).slice(0,8).map(x=>`${x.sku} ${x.dari}x→${x.menjadi}x`).join(', ')}.${d.archived_recorded?` Catatan: ${n(d.archived_recorded)} SO arsip tidak bisa dihitung ulang.`:''}`
+ :'Tidak ada perubahan. Rasio sudah sesuai dengan SO yang masih ada.';
+ACT['cov-sync-check']=async()=>{const d=await rpc('rounds_resync',{p_store:state.cov.store,p_apply:false});$('#covSync').textContent=covSyncText(d)};
+ACT['cov-sync-apply']=async()=>{
+ const c=state.cov;const d=await rpc('rounds_resync',{p_store:c.store,p_apply:false});
+ if(!d.changed){$('#covSync').textContent=covSyncText(d);return}
+ if(!confirm('Terapkan sinkronisasi rasio?\n'+covSyncText(d)))return;
+ await rpc('rounds_resync',{p_store:c.store,p_apply:true});toast('Rasio disinkronkan');await showCoverage();
 };
