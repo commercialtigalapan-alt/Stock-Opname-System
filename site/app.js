@@ -474,6 +474,7 @@ async function showSchedule(){
   </details>`}).join(''):'<div class="card empty">Belum ada SO pada filter ini.'+' Klik + Partial SO atau + Grand SO untuk membuat jadwal.</div>'}`;
 }
 document.addEventListener('toggle',e=>{const d=e.target;if(d&&d.classList&&d.classList.contains('store-folder')&&d.dataset.code){state.sch.folders=state.sch.folders||{};state.sch.folders[d.dataset.code]=d.open}},true);
+document.addEventListener('toggle',e=>{const d=e.target;if(d&&d.classList&&d.classList.contains('month-folder')&&d.dataset.mkey){state.exp.months=state.exp.months||{};state.exp.months[d.dataset.mkey]=d.open}},true);
 CHG['sch-filter']=async el=>{state.sch.store=el.value;await showSchedule()};
 ACT['sch-start']=async el=>{
  if(!confirm('Mulai SO sekarang? Stok sistem diambil dari inventory saat ini.'))return;
@@ -1088,16 +1089,22 @@ async function showValidation(){
   <div class="card-head"><div><h3>Validasi SPV</h3><p class="muted small">Review hasil counting Store, validasi selisih, lalu approve SO.</p></div><span class="chip blue"><i></i>${n(v.rows.length)} SO</span></div>
   <div class="toolbar"><input id="vListSearch" class="input grow" placeholder="Cari SO / Store" value="${escapeHTML(v.listQ)}"/>
    <select id="vStatus" class="input" data-change="v-status"><option value="ALL" ${v.status==='ALL'?'selected':''}>Semua Status</option><option value="SUBMITTED" ${v.status==='SUBMITTED'?'selected':''}>Validasi SPV</option><option value="APPROVED" ${v.status==='APPROVED'?'selected':''}>Approved</option></select></div>
-  <div class="tablewrap"><table><thead><tr><th>SO</th><th>Store</th><th>Tanggal</th><th>PIC</th><th>Status</th><th class="num">SKU</th><th class="num">SKU Accuracy</th><th>Action</th></tr></thead><tbody id="vBody"></tbody></table></div>
+  <div class="bulkbar"><button class="btn outline" data-act="val-sel-all">Pilih semua (Approved)</button><button class="btn outline" data-act="val-sel-none">Kosongkan</button>
+   <button class="btn dark" data-act="val-csv-sel">⤓ Export CSV terpilih</button><span class="muted small" id="valSelCount">${n((state.validation.sel||new Set()).size)} dipilih</span></div>
+  <div class="tablewrap"><table><thead><tr><th></th><th>SO</th><th>Store</th><th>Tanggal</th><th>PIC</th><th>Status</th><th class="num">SKU</th><th class="num">SKU Accuracy</th><th>Action</th></tr></thead><tbody id="vBody"></tbody></table></div>
  </div>`;
  drawValRows();
 }
 function valAcc(r){const t=(r.tally||0)+(r.variance||0);return t?(r.tally||0)/t:null}
+function valFiltered(){const v=state.validation;const q=(v.listQ||'').trim().toLowerCase();return v.rows.filter(r=>{if(q&&!(r.no+' '+r.store_name).toLowerCase().includes(q))return false;if(v.status!=='ALL'&&r.status!==v.status)return false;return true})}
+const valExportable=r=>r.status==='APPROVED'&&!r.archived;
+function updateValSelCount(){const l=$('#valSelCount');if(l)l.textContent=`${n((state.validation.sel||new Set()).size)} dipilih`}
 function drawValRows(){
- const v=state.validation;const q=(v.listQ||'').trim().toLowerCase();
- const rows=v.rows.filter(r=>{if(q&&!(r.no+' '+r.store_name).toLowerCase().includes(q))return false;if(v.status!=='ALL'&&r.status!==v.status)return false;return true});
+ const v=state.validation;v.sel=v.sel||new Set();
+ const rows=valFiltered();
  const body=$('#vBody');if(!body)return;
- body.innerHTML=rows.map(r=>`<tr><td><b class="mono">${escapeHTML(r.no)}</b><br><small class="muted">${r.so_type==='PARTIAL'?'PARTIAL':'GRAND'}${r.archived?' • Diarsipkan':''}</small></td><td>${escapeHTML(r.store_name)}</td><td>${fmtDate(r.planned_date)}</td><td>${escapeHTML(r.pic||'-')}</td><td>${chip(r.status)}</td><td class="num">${n(r.scope_count)}</td><td class="num"><b>${P(valAcc(r))}</b><br><small class="muted">${n(r.variance||0)} variance</small></td><td>${btn('Validasi','val-open','primary',{id:r.id,store:r.store_code})}</td></tr>`).join('')||'<tr><td colspan="8" class="empty">Belum ada SO yang menunggu validasi.</td></tr>';
+ body.innerHTML=rows.map(r=>`<tr><td>${valExportable(r)?`<input type="checkbox" data-change="val-chk" value="${r.id}" ${v.sel.has(r.id)?'checked':''}/>`:''}</td><td><b class="mono">${escapeHTML(r.no)}</b><br><small class="muted">${r.so_type==='PARTIAL'?'PARTIAL':'GRAND'}${r.archived?' • Diarsipkan':''}</small></td><td>${escapeHTML(r.store_name)}</td><td>${fmtDate(r.planned_date)}</td><td>${escapeHTML(r.pic||'-')}</td><td>${chip(r.status)}</td><td class="num">${n(r.scope_count)}</td><td class="num"><b>${P(valAcc(r))}</b><br><small class="muted">${n(r.variance||0)} variance</small></td><td>${btn('Validasi','val-open','primary',{id:r.id,store:r.store_code})}${valExportable(r)?' '+btn('⤓ CSV','val-csv-row','dark',{id:r.id}):''}</td></tr>`).join('')||'<tr><td colspan="9" class="empty">Belum ada SO yang menunggu validasi.</td></tr>';
+ updateValSelCount();
 }
 CHG['v-status']=el=>{state.validation.status=el.value;drawValRows()};
 ACT['val-open']=async el=>{state.page='validation';const v=state.validation;v.cycle=el.dataset.id;v.open=true;v.offset=0;v.search='';v.filter='VARIANCE';state.store=el.dataset.store||state.store;await render()};
@@ -1158,6 +1165,13 @@ ACT['val-next']=async()=>{const v=state.validation;if(!v.data||v.offset+50>=v.da
 ACT['val-approve']=async()=>{const v=state.validation;if(!confirm('Approve SO? Setelah disetujui, hasil akan dikunci.'))return;await rpc('approve',{p_cycle:v.data.cycle_id});toast('SO berhasil APPROVED');await refreshDashboard();await loadValidation()};
 ACT['val-recount']=async()=>{const v=state.validation;const reason=prompt('Alasan Recount (minimal 5 karakter):');if(reason===null)return;await rpc('recount',{p_cycle:v.data.cycle_id,p_reason:reason});toast('SO dikembalikan untuk recount');await refreshDashboard();await loadValidation()};
 ACT['val-export']=async()=>{const v=state.validation;const k=await exportCombined([{id:v.data.cycle_id,no:'SO',store:labelStore(state.store),date:'',type:''}]);toast(`CSV diunduh: ${n(k)} SKU`)};
+// Export CSV dari daftar Validasi: satu SO (per baris) atau banyak SO sekaligus (satu file gabungan).
+const valSelItems=()=>{const v=state.validation;const items=v.rows.filter(r=>v.sel.has(r.id)&&valExportable(r)).map(exportItem);if(!items.length)throw Error('Pilih minimal satu SO APPROVED yang belum dibersihkan.');return items};
+ACT['val-sel-all']=()=>{const v=state.validation;v.sel=new Set(valFiltered().filter(valExportable).map(r=>r.id));drawValRows()};
+ACT['val-sel-none']=()=>{state.validation.sel=new Set();drawValRows()};
+CHG['val-chk']=el=>{const v=state.validation;v.sel=v.sel||new Set();el.checked?v.sel.add(el.value):v.sel.delete(el.value);updateValSelCount()};
+ACT['val-csv-sel']=async()=>{const items=valSelItems();const k=await exportCombined(items);state.validation.sel=new Set();toast(`CSV gabungan diunduh: ${n(items.length)} SO, ${n(k)} baris.`);await showValidation()};
+ACT['val-csv-row']=async el=>{const r=state.validation.rows.find(x=>x.id===el.dataset.id);if(!r)throw Error('SO tidak ditemukan di daftar.');const k=await exportCombined([exportItem(r)]);toast(`CSV diunduh: ${n(k)} SKU.`);await showValidation()};
 
 /* ---------- Export & Pembersihan Database ---------- */
 const KEYS_EXPORT=['SO_NO','STORE','TANGGAL','TIPE','SKU','NAME_VARIANT','CATEGORY','TEAM','SYSTEM_AT_START','DISPLAY','REJECT','RAK_UTAMA','RAK_CADANGAN','ACTUAL','ADJUSTMENT','UNIT_COST','REASON'];
@@ -1185,6 +1199,19 @@ async function showExport(){
  x.rows=rows;
  x.sel=new Set([...x.sel].filter(id=>rows.some(r=>r.id===id&&!r.archived)));
  const openCnt=rows.filter(r=>!r.archived).length;
+ // Folder per bulan (berdasarkan tanggal SO), terbaru di atas. Status folder diingat di state.exp.months.
+ const mLabel=k=>{if(k==='0000-00')return 'Tanpa tanggal';const [y,m]=k.split('-');return new Date(+y,+m-1,1).toLocaleDateString('id-ID',{month:'long',year:'numeric'})};
+ const months=new Map();
+ for(const r of rows){const k=(r.planned_date||'').slice(0,7)||'0000-00';if(!months.has(k))months.set(k,[]);months.get(k).push(r)}
+ const expRowHTML=r=>`<tr>
+    <td>${r.archived?'':`<input type="checkbox" data-change="exp-chk" value="${r.id}" ${x.sel.has(r.id)?'checked':''}/>`}</td>
+    <td><b class="mono">${escapeHTML(r.no)}</b></td><td>${escapeHTML(r.store_name)}</td><td>${fmtDate(r.planned_date)}</td><td>${r.so_type==='PARTIAL'?'PARTIAL':'GRAND'}</td>
+    <td class="num">${n(r.scope_count)}</td><td class="num">${n(r.tally)}</td><td class="num">${n(r.variance)}</td>
+    <td>${r.archived?chip('APPROVED','Dibersihkan'):chip('APPROVED')}</td>
+    <td class="actions">${isAdmin()?btn('Hapus Permanen','so-hard-del','danger',{id:r.id}):''}${r.archived?'<small class="muted">Detail dihapus; ringkasan tersimpan</small>':`${btn('⤓ Export','exp-csv','dark',{id:r.id})}${canManage()?btn('Bersihkan','exp-archive','danger',{id:r.id}):''}`}</td></tr>`;
+ const mFolders=[...months.keys()].sort().reverse().map(k=>{const g=months.get(k);const left=g.filter(r=>!r.archived).length;const isOpen=(x.months||{})[k]!==false;
+   return `<details class="card store-folder month-folder" data-mkey="${k}"${isOpen?' open':''}><summary><span class="sf-name">${mLabel(k)}</span><span class="sf-meta">${n(g.length)} SO · ${n(left)} belum dibersihkan</span></summary>
+   <div class="tablewrap"><table><thead><tr><th></th><th>SO</th><th>Store</th><th>Tanggal</th><th>Tipe</th><th class="num">SKU</th><th class="num">Tally</th><th class="num">Selisih</th><th>Status</th><th>Action</th></tr></thead><tbody>${g.map(expRowHTML).join('')}</tbody></table></div></details>`}).join('');
  $('#content').innerHTML=`<div class="db-grid">
    <div class="db-tile"><small>Baris detail SKU aktif</small><b>${n(stats.active_lines)}</b><span>Sumber beban database</span></div>
    <div class="db-tile"><small>SO terbuka (belum diarsipkan)</small><b>${n(stats.open_cycles)}</b><span>Termasuk yang masih berjalan</span></div>
@@ -1200,13 +1227,9 @@ async function showExport(){
   <div class="bulkbar"><button class="btn outline" data-act="exp-all">Pilih semua</button><button class="btn outline" data-act="exp-none">Kosongkan</button>
    <button class="btn dark" data-act="exp-bulk-csv">⤓ Export CSV terpilih</button>${canManage()?'<button class="btn danger" data-act="exp-bulk-clean">Export & bersihkan terpilih</button>':''}
    <span class="muted small" id="expSelCount">${n(x.sel.size)} dipilih</span></div>
-  <div class="tablewrap"><table><thead><tr><th></th><th>SO</th><th>Store</th><th>Tanggal</th><th>Tipe</th><th class="num">SKU</th><th class="num">Tally</th><th class="num">Selisih</th><th>Status</th><th>Action</th></tr></thead><tbody>${rows.map(r=>`<tr>
-    <td>${r.archived?'':`<input type="checkbox" data-change="exp-chk" value="${r.id}" ${x.sel.has(r.id)?'checked':''}/>`}</td>
-    <td><b class="mono">${escapeHTML(r.no)}</b></td><td>${escapeHTML(r.store_name)}</td><td>${fmtDate(r.planned_date)}</td><td>${r.so_type==='PARTIAL'?'PARTIAL':'GRAND'}</td>
-    <td class="num">${n(r.scope_count)}</td><td class="num">${n(r.tally)}</td><td class="num">${n(r.variance)}</td>
-    <td>${r.archived?chip('APPROVED','Dibersihkan'):chip('APPROVED')}</td>
-    <td class="actions">${isAdmin()?btn('Hapus Permanen','so-hard-del','danger',{id:r.id}):''}${r.archived?'<small class="muted">Detail dihapus; ringkasan tersimpan</small>':`${btn('⤓ Export','exp-csv','dark',{id:r.id})}${canManage()?btn('Bersihkan','exp-archive','danger',{id:r.id}):''}`}</td></tr>`).join('')||'<tr><td colspan="10" class="empty">Belum ada SO APPROVED pada filter ini.</td></tr>'}</tbody></table></div>
- </div>`;
+ </div>
+ ${mFolders||'<div class="card empty">Belum ada SO APPROVED pada filter ini.</div>'}
+`;
 }
 CHG['exp-store']=async()=>{state.exp.store=$('.filter-card select[data-change="exp-store"]').value;state.exp.sel=new Set();await showExport()};
 CHG['exp-chk']=el=>{const x=state.exp;el.checked?x.sel.add(el.value):x.sel.delete(el.value);const l=$('#expSelCount');if(l)l.textContent=`${n(x.sel.size)} dipilih`};
