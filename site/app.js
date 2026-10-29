@@ -921,8 +921,9 @@ function countDraftSync(tr){
  const dr=readCountDraft(d.cycle_id);dr[tr.dataset.sku]=row;writeCountDraft(d.cycle_id,dr);
 }
 document.addEventListener('input',e=>{const tr=e.target.closest?.('#countTable tr[data-sku]');if(tr)countDraftSync(tr)});
-function rowVals(tr){
- const qty=k=>{const v=tr.querySelector(`[data-pos="${k}"]`).value;if(v==='')return null;if(!/^\d+$/.test(v))throw Error('Qty harus bilangan bulat >=0: '+tr.dataset.sku);return Number(v)};
+// blankZero: kolom yang dikosongkan dianggap 0 (tidak perlu diketik manual).
+function rowVals(tr,opts={}){
+ const qty=k=>{const v=tr.querySelector(`[data-pos="${k}"]`).value;if(v==='')return opts.blankZero?0:null;if(!/^\d+$/.test(v))throw Error('Qty harus bilangan bulat >=0: '+tr.dataset.sku);return Number(v)};
  const row={sku:tr.dataset.sku,reason:tr.querySelector('.noteval').value.trim()};POS.forEach(([k])=>{row[k]=qty(k)});return row;
 }
 function paintRow(tr,status,total,reason){
@@ -933,12 +934,14 @@ function paintRow(tr,status,total,reason){
 // Simpan satu baris lalu minta status-nya dari server (system tetap tidak dikirim ke Store)
 async function saveRow(tr){
  const d=state.count.data;if(!d||!(d.status==='COUNTING'||d.status==='RECOUNT'))return;
- const row=rowVals(tr);
+ const row=rowVals(tr,{blankZero:true});
  tr.classList.add('row-saving');
  try{
   await rpc('save_counts',{p_cycle:d.cycle_id,p_rows:[{sku:row.sku,display:row.display,reject:row.reject,rak_utama:row.rak_utama,rak_cadangan:row.rak_cadangan,reason:row.reason}]});
   clearCountDraft(d.cycle_id,[row.sku]);
   const st=await rpc('row_status',{p_cycle:d.cycle_id,p_sku:row.sku});
+  // Kolom kosong sudah tersimpan sebagai 0: tampilkan 0 agar jelas.
+  POS.forEach(([k])=>{const inp=tr.querySelector(`[data-pos="${k}"]`);if(inp&&inp.value===''&&document.activeElement!==inp)inp.value='0'});
   paintRow(tr,st.status,st.total,row.reason);
   broadcastRow(row,st);
  }finally{tr.classList.remove('row-saving')}
@@ -975,9 +978,14 @@ function broadcastRow(row,st){
  if(!countCh)return;
  countCh.send({type:'broadcast',event:'row',payload:{sku:row.sku,display:row.display,reject:row.reject,rak_utama:row.rak_utama,rak_cadangan:row.rak_cadangan,reason:row.reason,status:st.status,total:st.total}}).catch(()=>{});
 }
-CHG['count-row']=async el=>{const tr=el.closest('tr[data-sku]');if(tr)await saveRow(tr)};
+// Simpan per baris berurutan: respons server tidak saling mendahului, total tidak tertinggal.
+let saveQ=Promise.resolve();
+const saveRowQ=tr=>{const job=saveQ.then(()=>saveRow(tr));saveQ=job.catch(()=>{});return job};
+CHG['count-row']=async el=>{const tr=el.closest('tr[data-sku]');if(tr)await saveRowQ(tr)};
 async function saveCountPage(){
- const d=state.count.data;const rows=$$('#countTable tr[data-sku]').map(tr=>rowVals(tr));
+ const d=state.count.data;
+ // Baris yang belum diisi sama sekali dilewati; kolom kosong di baris yang diisi dianggap 0.
+ const rows=$$('#countTable tr[data-sku]').filter(tr=>POS.some(([k])=>tr.querySelector(`[data-pos="${k}"]`).value!=='')||tr.querySelector('.noteval').value.trim()!=='').map(tr=>rowVals(tr,{blankZero:true}));
  if(!rows.length)return 0;
  await rpc('save_counts',{p_cycle:d.cycle_id,p_rows:rows.map(v=>({sku:v.sku,display:v.display,reject:v.reject,rak_utama:v.rak_utama,rak_cadangan:v.rak_cadangan,reason:v.reason}))});
  clearCountDraft(d.cycle_id,rows.map(v=>v.sku));return rows.length;
@@ -1011,12 +1019,19 @@ function pushCalcLog(e){
 function calcHistHTML(){
  const [sku]=calcSplit(calc?.label);
  const mine=calcLog.filter(x=>x.sku===sku).slice(-8).reverse();
- const sym={add:'+',sub:'−',set:'='};
+ const sym={add:'+',sub:'−',set:'=',mul:'×'};
  const rows=mine.map(x=>`<li><span class="mono small">${new Date(x.t).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Makassar'})}</span> <b>${escapeHTML(x.pos)}</b> ${sym[x.op]||''}${n(x.amt)} <span class="muted small">${n(x.before)} → ${n(x.after)}</span></li>`).join('');
  return `<div class="calc-hist"><div class="calc-hist-head"><b>Riwayat ${sku?escapeHTML(sku):'kalkulator'}</b><span class="muted small">${n(mine.length)} tercatat</span>${calcLog.length?'<button class="btn ghost sm" data-act="calc-hist-clear">Hapus semua</button>':''}</div>${rows?`<ul>${rows}</ul>`:'<p class="small muted">Belum ada riwayat untuk item ini.</p>'}</div>`;
 }
 ACT['calc-hist-clear']=async()=>{calcLog=[];try{sessionStorage.removeItem('calcLog')}catch{};drawCalc()};
-function openCalc(input,label){calc={input,typed:'',label:label||'Qty'};drawCalc()}
+// Simpan SKU dan posisi agar kalkulator tetap bisa mengisi baris yang benar walau tabel sudah dirender ulang.
+function openCalc(input,label){calc={input,typed:'',label:label||'Qty',sku:input.closest('tr')?.dataset.sku||'',pos:input.dataset.pos||''};drawCalc()}
+function calcLiveInput(){
+ if(!calc)return null;
+ if(calc.input&&calc.input.isConnected)return calc.input;
+ const tr=[...document.querySelectorAll('#countTable tr[data-sku]')].find(x=>x.dataset.sku===calc.sku);
+ return tr?tr.querySelector(`[data-pos="${calc.pos}"]`):null;
+}
 function drawCalc(){
  let ov=document.getElementById('calcOv');
  if(!calc){ov?.remove();return}
@@ -1027,7 +1042,7 @@ function drawCalc(){
   <div class="calc-disp"><small>Posisi saat ini</small><b>${n(cur)}</b></div>
   <div class="calc-disp input-disp"><small>Angka input</small><b>${calc.typed===''?'0':escapeHTML(calc.typed)}</b></div>
   <div class="keypad">${keys.map(k=>`<button class="key" data-act="calc-key" data-k="${k}">${k}</button>`).join('')}<button class="key warn" data-act="calc-key" data-k="C">C</button></div>
-  <div class="calc-actions"><button class="btn primary" data-act="calc-apply" data-op="add">+ Tambah</button><button class="btn danger" data-act="calc-apply" data-op="sub">− Kurangi</button><button class="btn outline" data-act="calc-apply" data-op="set">= Ganti</button></div>
+  <div class="calc-actions"><button class="btn primary" data-act="calc-apply" data-op="add">+ Tambah</button><button class="btn danger" data-act="calc-apply" data-op="sub">− Kurangi</button><button class="btn outline" data-act="calc-apply" data-op="mul">× Kali</button><button class="btn outline" data-act="calc-apply" data-op="set">= Ganti</button></div>
   ${calcHistHTML()}
   <p class="small muted">Setiap Tambah/Kurangi langsung masuk ke posisi. Kalkulator tetap terbuka untuk input berikutnya.</p>
  </div>`;
@@ -1048,14 +1063,20 @@ ACT['calc-key']=async el=>{
 ACT['calc-apply']=async el=>{
  if(!calc)return;const op=el.dataset.op;
  if(calc.typed===''&&op!=='set')throw Error('Isi angka terlebih dahulu.');
+ const live=calcLiveInput();
+ if(!live)throw Error('Baris tidak ditemukan. Tutup kalkulator lalu coba lagi.');
  const amt=Number(calc.typed||0);
- const cur=calc.input.value===''?0:Number(calc.input.value);
- const next=op==='add'?cur+amt:op==='sub'?Math.max(0,cur-amt):amt;
+ const cur=live.value===''?0:Number(live.value);
+ const next=op==='add'?cur+amt:op==='sub'?Math.max(0,cur-amt):op==='mul'?cur*amt:amt;
+ if(next>999999999)throw Error('Hasil terlalu besar.');
  pushCalcLog({label:calc.label,op,amt,before:cur,after:next});
- calc.input.value=String(next);
- calc.input.dispatchEvent(new Event('input',{bubbles:true}));
- calc.input.dispatchEvent(new Event('change',{bubbles:true}));
+ live.value=String(next);
+ live.dispatchEvent(new Event('input',{bubbles:true}));
+ // Total baris langsung diperbarui, lalu disimpan lewat antrean.
+ const tr=live.closest('tr[data-sku]');
+ if(tr){const t=POS.reduce((a,[k])=>a+Number(tr.querySelector(`[data-pos="${k}"]`).value||0),0);tr.querySelector('.total').textContent=n(t)}
  calc.typed='';drawCalc();
+ if(tr)await saveRowQ(tr);
 };
 ACT['calc-close']=async()=>{calc=null;drawCalc()};
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&calc){calc=null;drawCalc()}});
@@ -1170,8 +1191,9 @@ renderPresence();
 ACT['val-clear']=async()=>{const v=state.validation;v.search='';v.filter='VARIANCE';v.offset=0;await loadValidation()};
 CHG['val-field']=async el=>{
  const tr=el.closest('tr[data-sku]');const v=state.validation;if(!tr||!v.data)return;
- const val=f=>{const q=tr.querySelector(`[data-f="${f}"]`)?.value??'';if(q!==''&&!/^\d+$/.test(q))throw Error('Qty harus bilangan bulat >=0.');return q===''?null:Number(q)};
- const sys=val('system');if(sys==null)throw Error('System qty wajib diisi.');
+ // Kolom yang dikosongkan dianggap 0.
+ const val=f=>{const q=tr.querySelector(`[data-f="${f}"]`)?.value??'';if(q!==''&&!/^\d+$/.test(q))throw Error('Qty harus bilangan bulat >=0.');return q===''?0:Number(q)};
+ const sys=val('system');
  const note=tr.querySelector('.reason-in').value.trim();
  tr.classList.add('row-saving');
  try{await rpc('validate_edit',{p_cycle:v.data.cycle_id,p_sku:tr.dataset.sku,p_system:sys,p_display:val('display'),p_reject:val('reject'),p_rak_utama:val('rak_utama'),p_rak_cadangan:val('rak_cadangan'),p_note:note});toast('Tersimpan: '+tr.dataset.sku);await loadValidation()}
