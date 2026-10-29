@@ -1193,3 +1193,22 @@ body{-webkit-font-smoothing:antialiased}
 }
 .line-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
 @media (max-width:900px){.line-svg{min-width:620px}}
+/* v17: Tren akurasi per toko (batang horizontal + sparkline tren) */
+.trend-rows{display:grid;gap:0;min-width:0}
+.trow{display:grid;grid-template-columns:minmax(120px,200px) minmax(0,1fr) 64px 96px 180px;gap:12px;align-items:center;padding:9px 0;border-bottom:1px solid rgba(128,128,128,.12);font-size:13px;min-width:0}
+.trow-head{font-size:12px;font-weight:600;opacity:.7;border-bottom:1px solid rgba(128,128,128,.25);padding:6px 0}
+.trow:last-child{border-bottom:0}
+.tl{display:flex;align-items:center;gap:8px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;min-width:0}
+.tl i{width:10px;height:10px;border-radius:3px;flex:0 0 auto}
+.ttrack{height:14px;border-radius:999px;background:rgba(128,128,128,.15);overflow:hidden;min-width:0}
+.tfill{display:block;height:100%;border-radius:999px;opacity:.8}
+.tdelta{white-space:nowrap}
+.tdelta.up{color:#16a34a}.tdelta.down{color:#dc2626}
+.spark{width:100%;height:30px;overflow:visible;min-width:0}
+@media (max-width:900px){
+ .trow{grid-template-columns:minmax(0,1fr) auto auto;row-gap:6px}
+ .trow-head{display:none}
+ .trow .ttrack{grid-column:1/-1;order:5}
+ .trow .spark{grid-column:1/-1;order:6}
+ .trow .tdelta{order:4;text-align:left}
+}

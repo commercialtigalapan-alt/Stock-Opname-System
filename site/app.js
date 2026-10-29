@@ -319,30 +319,29 @@ function bucketLabel(key,b){
  if(b==='year')return String(d.getFullYear());
  return d.toLocaleDateString('id-ID',{day:'2-digit',month:'short'});
 }
-// Grafik batang per periode (satu batang per toko) dengan garis tren per toko. Sumbu Y mengikuti data.
-function barTrendSVG(series,labels){
- const W=960,H=340,L=52,R=16,T=16,B=48;const iw=W-L-R,ih=H-T-B;const cnt=labels.length;const m=Math.max(1,series.length);
- const vals=series.flatMap(s=>s.values).filter(v=>v!=null);
- const lo=vals.length?Math.min(...vals):0;
+// Batang horizontal per toko: panjang = akurasi periode terakhir, garis kecil = tren per periode, Δ = selisih vs periode sebelumnya.
+function hbarTrendHTML(series,bl){
+ const W=180,H=30,cnt=bl.length;
+ const all=series.flatMap(s=>s.values).filter(v=>v!=null);
+ const lo=all.length?Math.min(...all):0;
  let ystep=0.25;for(const c of [0.02,0.05,0.1,0.25]){if((1-Math.max(0,Math.floor((lo-0.02)/c)*c))/c<=5){ystep=c;break}}
  const yMin=Math.max(0,Math.floor((lo-0.02)/ystep)*ystep);
- const y=v=>T+ih*(1-Math.max(0,Math.min(1,(v-yMin)/(1-yMin))));
- const gw=iw/Math.max(1,cnt);
- const bw=Math.max(4,Math.min(72,gw*0.86/m));
- const cx=(i,si)=>L+i*gw+gw/2-(m*bw)/2+si*bw+bw/2;
- const base=y(yMin);
- let g='';
- for(let t=yMin;t<=1.000001;t+=ystep){const tt=Math.min(1,+t.toFixed(4));const yy=y(tt).toFixed(1);g+=`<line x1="${L}" x2="${W-R}" y1="${yy}" y2="${yy}" class="gl"/><text x="${L-8}" y="${(+yy+4).toFixed(1)}" class="gt" text-anchor="end">${Math.round(tt*100)}%</text>`}
- const step=Math.max(1,Math.ceil(cnt/12));
- labels.forEach((lb,i)=>{if(i%step!==0&&i!==cnt-1)return;g+=`<text x="${(L+i*gw+gw/2).toFixed(1)}" y="${H-16}" class="gt" text-anchor="middle">${escapeHTML(lb)}</text>`});
- series.forEach((s,si)=>{
-  s.values.forEach((v,i)=>{if(v==null)return;const yy=y(v);g+=`<rect x="${(cx(i,si)-bw/2).toFixed(1)}" y="${yy.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(1,base-yy).toFixed(1)}" rx="2" fill="${s.color}" fill-opacity=".55"><title>${escapeHTML(s.name)} · ${escapeHTML(labels[i])}: ${P(v)}</title></rect>`});
-  let path='',pen=false;
-  s.values.forEach((v,i)=>{if(v==null){pen=false;return}path+=(pen?'L':'M')+cx(i,si).toFixed(1)+','+y(v).toFixed(1);pen=true});
-  if(path)g+=`<path d="${path}" fill="none" stroke="${s.color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`;
-  s.values.forEach((v,i)=>{if(v==null)return;g+=`<circle cx="${cx(i,si).toFixed(1)}" cy="${y(v).toFixed(1)}" r="3.5" fill="${s.color}"/>`});
- });
- return `<svg class="line-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Grafik batang dan tren akurasi SKU per toko">${g}</svg>`;
+ const pos=v=>Math.max(0,Math.min(1,(v-yMin)/(1-yMin)));
+ const x=i=>cnt<=1?W/2:i*W/(cnt-1);
+ const y=v=>H-3-(H-6)*pos(v);
+ const head=`<div class="trow trow-head"><span>Toko</span><span>Akurasi periode terakhir (skala ${Math.round(yMin*100)}%–100%)</span><span class="num">Nilai</span><span class="num">Δ</span><span>Tren per periode</span></div>`;
+ const rows=series.map(s=>{
+  const pts=s.values.map((v,i)=>v==null?null:[i,v]).filter(Boolean);
+  if(!pts.length)return '';
+  const last=pts[pts.length-1][1];const prev=pts.length>1?pts[pts.length-2][1]:null;
+  const dl=prev==null?null:(last-prev)*100;
+  const dTxt=dl==null?'—':(dl>0.05?'▲ +':dl<-0.05?'▼ ':'● ')+(dl<-0.05||dl>0.05?dl.toFixed(1):'0.0')+' pp';
+  const dCls=dl==null?'':dl>0.05?'up':dl<-0.05?'down':'';
+  const poly=pts.map(([i,v])=>`${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+  const spark=`<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">${pts.length>1?`<polyline points="${poly}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`:''}${pts.map(([i,v])=>`<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="2.6" fill="${s.color}"><title>${escapeHTML(bl[i])}: ${P(v)}</title></circle>`).join('')}</svg>`;
+  return `<div class="trow"><span class="tl" title="${escapeHTML(s.name)}"><i style="background:${s.color}"></i>${escapeHTML(s.name)}</span><div class="ttrack"><span class="tfill" style="width:${(pos(last)*100).toFixed(1)}%;background:${s.color}"></span></div><b class="num">${P(last)}</b><span class="num tdelta ${dCls}">${dTxt}</span>${spark}</div>`;
+ }).join('');
+ return `<div class="trend-rows">${head}${rows}</div>`;
 }
 // Isi tab "Grafik & Tren". Periode grafik dan filter mengikuti filter utama di atas halaman.
 function chartTabHTML(d,rows,trend){
@@ -355,9 +354,7 @@ function chartTabHTML(d,rows,trend){
  const stores=rows.filter(r=>tr.some(x=>x.store_code===r.code)).map(r=>r.code);
  const series=stores.map((code,i)=>({name:names.get(code),color:CHART_COLORS[i%CHART_COLORS.length],
   values:buckets.map(b=>{const x=tr.find(t=>t.store_code===code&&t.bucket===b);return x&&x.appr_total>0?x.appr_tally/x.appr_total:null})}));
- const trendHTML=buckets.length
-  ?`<div class="line-wrap">${barTrendSVG(series,bl)}</div><div class="legend">${series.map(s=>`<span><i style="background:${s.color}"></i>${escapeHTML(s.name)}</span>`).join('')}</div>`
-  :'<div class="empty">Belum ada SO APPROVED pada periode ini.</div>';
+ const trendHTML=buckets.length?hbarTrendHTML(series,bl):'<div class="empty">Belum ada SO APPROVED pada periode ini.</div>';
  // 2) Volume SO approved per periode
  const vol=buckets.map(b=>tr.filter(t=>t.bucket===b).reduce((s,x)=>s+x.so_approved,0));
  const vmax=Math.max(1,...vol);
@@ -367,15 +364,16 @@ function chartTabHTML(d,rows,trend){
  const vmax2=Math.max(1,...vals.map(x=>Math.max(x.m,x.s)));
  const valHTML=vals.length?vals.map(x=>`<div class="hbar-pair"><span class="hbar-l" title="${escapeHTML(x.name)}">${escapeHTML(x.name)}</span><div><div class="hbar-t"><span class="hbar-f miss" style="width:${(x.m/vmax2*100).toFixed(1)}%"></span></div><div class="hbar-t"><span class="hbar-f sur" style="width:${(x.s/vmax2*100).toFixed(1)}%"></span></div></div><small class="num">${rp(-x.m)}<br>${rp(x.s,true)}</small></div>`).join('')+'<div class="legend"><span><i style="background:#dc2626"></i>Kekurangan</span><span><i style="background:#16a34a"></i>Kelebihan</span></div>':'<div class="empty">Tidak ada nilai selisih pada periode ini.</div>';
  return `<div class="chart-grid">
-  <div class="card chart-card chart-wide"><div class="card-head"><div><h3>Tren Akurasi SKU per Toko</h3><p class="muted small">Batang = akurasi SKU per periode, garis = arah tren. Sumbu Y tidak mulai dari 0 agar perbedaan terlihat.</p></div></div>${trendHTML}</div>
+  <div class="card chart-card chart-wide"><div class="card-head"><div><h3>Tren Akurasi SKU per Toko</h3><p class="muted small">Batang = akurasi SKU periode terakhir. Garis kecil = tren per periode, Δ = selisih dibanding periode sebelumnya.</p></div></div>${trendHTML}</div>
   <div class="card chart-card"><div class="card-head"><div><h3>Volume SO Approved</h3><p class="muted small">Jumlah SO APPROVED per periode.</p></div></div>${volHTML}</div>
   <div class="card chart-card"><div class="card-head"><div><h3>Nilai Selisih per Toko</h3><p class="muted small">Kekurangan dan kelebihan stok pada SO APPROVED.</p></div></div>${valHTML}</div>
  </div>`;
 }
 async function showDashboard(){
  const d=state.dash;await refreshDashboard();
- d.bucket=d.bucket||'week';
- const [from,to]=rangeBounds(d.range);
+  const [from,to]=rangeBounds(d.range);
+ const spanDays=(from&&to)?(new Date(to)-new Date(from))/864e5:null;
+ d.bucket=spanDays==null?'month':spanDays<=31?'day':spanDays<=180?'week':spanDays<=730?'month':'year';
  const wantChart=d.tab==='chart';
  const [kpiRpc,analytics,trend]=await Promise.all([
   rpc('kpi',{p_store:d.store||null,p_type:d.type||null,p_from:from,p_to:to}),
@@ -451,7 +449,7 @@ async function showDashboard(){
    <select class="input select" data-change="dash-filter" id="dStore"><option value="">Semua Store</option>${analytics.filter(bySpv).map(r=>`<option value="${escapeHTML(r.code)}" ${d.store===r.code?'selected':''}>${escapeHTML(r.name)}</option>`).join('')}</select>
    <select class="input select" data-change="dash-filter" id="dType"><option value="">Semua Jenis SO</option><option value="GRAND" ${d.type==='GRAND'?'selected':''}>Grand SO</option><option value="PARTIAL" ${d.type==='PARTIAL'?'selected':''}>Partial SO</option></select>
    ${rangeControlHTML('dash',d.range)}
-   <select class="input select" data-change="dash-bucket-sel" id="dBucket" title="Periode untuk grafik tren">${BUCKETS.map(([kk,l])=>`<option value="${kk}" ${d.bucket===kk?'selected':''}>Grafik: ${l}</option>`).join('')}</select>
+
   </div>
  </div>
  <div class="card tabs-card"><span class="tabs-lbl">ANALISA</span>${tabs.map(([id,l])=>`<button class="tab ${d.tab===id?'on':''}" data-act="dash-tab" data-tab="${id}">${l}</button>`).join('')}</div>
@@ -459,7 +457,6 @@ async function showDashboard(){
  if(d.tab==='act'&&isAdmin())loadAudit().catch(()=>{});
 }
 CHG['dash-spv']=async()=>{state.dash.spv=$('#dSpv').value;state.dash.store='';await showDashboard()};
-CHG['dash-bucket-sel']=async()=>{state.dash.bucket=$('#dBucket').value;await showDashboard()};
 CHG['dash-filter']=async()=>{state.dash.store=$('#dStore').value;state.dash.type=$('#dType').value;await showDashboard()};
 ACT['dash-tab']=async el=>{state.dash.tab=el.dataset.tab;await showDashboard()};
 function resetPage(p){
