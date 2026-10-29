@@ -1081,7 +1081,8 @@ async function showValidation(){
  const v=state.validation;
  if(v.open)return loadValidation();
  const all=assignNo(await rpc('schedule_list',{p_store:null}));
- v.rows=all.filter(r=>r.status==='SUBMITTED'||r.status==='APPROVED');
+ // APPROVED tanpa selisih (100%, 0 variance) sudah selesai dan tidak perlu divalidasi lagi.
+ v.rows=all.filter(r=>r.status==='SUBMITTED'||(r.status==='APPROVED'&&(r.variance||0)>0));
  $('#content').innerHTML=`<div class="steps"><span>Counting</span><i>→</i><span>Submit Store</span><i>→</i><span class="on">Validasi SPV</span><i>→</i><span>Approved</span></div>
  <div class="card">
   <div class="card-head"><div><h3>Validasi SPV</h3><p class="muted small">Review hasil counting Store, validasi selisih, lalu approve SO.</p></div><span class="chip blue"><i></i>${n(v.rows.length)} SO</span></div>
