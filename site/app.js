@@ -1100,7 +1100,7 @@ async function showValidation(){
  v.rows=all.filter(r=>r.status==='SUBMITTED');
  $('#content').innerHTML=`<div class="steps"><span>Counting</span><i>→</i><span>Submit Store</span><i>→</i><span class="on">Validasi SPV</span><i>→</i><span>Approved</span></div>
  <div class="card">
-  <div class="card-head"><div><h3>Validasi SPV</h3><p class="muted small">Review hasil counting Store, validasi selisih, lalu approve SO.</p></div><span class="chip blue"><i></i>${n(v.rows.length)} SO</span></div>
+  <div class="card-head"><div><h3>Validasi SPV</h3><p class="muted small">Review hasil counting Store, validasi selisih, lalu approve SO.</p></div><div class="row">${btn('⤓ Export CSV','val-goto-export','dark')}<span class="chip blue"><i></i>${n(v.rows.length)} SO</span></div></div>
   <div class="toolbar"><input id="vListSearch" class="input grow" placeholder="Cari SO / Store" value="${escapeHTML(v.listQ)}"/>
    <select id="vStatus" class="input" data-change="v-status"><option value="ALL" ${v.status==='ALL'?'selected':''}>Semua Status</option><option value="SUBMITTED" ${v.status==='SUBMITTED'?'selected':''}>Validasi SPV</option></select></div>
   <div id="vBody"></div>
@@ -1119,6 +1119,8 @@ function drawValRows(){
 CHG['v-status']=el=>{state.validation.status=el.value;drawValRows()};
 ACT['val-open']=async el=>{state.page='validation';const v=state.validation;v.cycle=el.dataset.id;v.open=true;v.offset=0;v.search='';v.filter='VARIANCE';state.store=el.dataset.store||state.store;await render()};
 ACT['val-back']=async()=>{state.validation.open=false;state.validation.data=null;await render()};
+// Export dari header Validasi: pilihan SO dilakukan di menu Export & Pembersihan.
+ACT['val-goto-export']=async()=>{state.page='export';await render()};
 async function loadValidation(){
  const v=state.validation;
  const data=await rpc('validation_page',{p_cycle:v.cycle,p_offset:v.offset,p_limit:50,p_search:v.search,p_filter:v.filter});v.data=data;
@@ -1211,7 +1213,7 @@ async function showExport(){
     <td><b class="mono">${escapeHTML(r.no)}</b></td><td>${escapeHTML(r.store_name)}</td><td>${fmtDate(r.planned_date)}</td><td>${r.so_type==='PARTIAL'?'PARTIAL':'GRAND'}</td>
     <td class="num">${n(r.scope_count)}</td><td class="num">${n(r.tally)}</td><td class="num">${n(r.variance)}</td>
     <td>${r.archived?chip('APPROVED','Dibersihkan'):chip('APPROVED')}</td>
-    <td class="actions">${isAdmin()?btn('Hapus Permanen','so-hard-del','danger',{id:r.id}):''}${r.archived?'<small class="muted">Detail dihapus; ringkasan tersimpan</small>':`${btn('⤓ Export','exp-csv','dark',{id:r.id})}${canManage()?btn('Bersihkan','exp-archive','danger',{id:r.id}):''}`}</td></tr>`;
+    <td class="actions">${isAdmin()?btn('Hapus Permanen','so-hard-del','danger',{id:r.id}):''}${r.archived?'<small class="muted">Detail dihapus; ringkasan tersimpan</small>':`${canManage()?btn('Bersihkan','exp-archive','danger',{id:r.id}):''}`}</td></tr>`;
  const mFolders=[...months.keys()].sort().reverse().map(k=>{const g=months.get(k);const left=g.filter(r=>!r.archived).length;const isOpen=(x.months||{})[k]!==false;
    return `<details class="card store-folder month-folder" data-mkey="${k}"${isOpen?' open':''}><summary><span class="sf-name">${mLabel(k)}</span><span class="sf-meta">${n(g.length)} SO · ${n(left)} belum dibersihkan</span></summary>
    <div class="tablewrap"><table><thead><tr><th></th><th>SO</th><th>Store</th><th>Tanggal</th><th>Tipe</th><th class="num">SKU</th><th class="num">Tally</th><th class="num">Selisih</th><th>Status</th><th>Action</th></tr></thead><tbody>${g.map(expRowHTML).join('')}</tbody></table></div></details>`}).join('');
