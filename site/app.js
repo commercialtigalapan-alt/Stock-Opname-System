@@ -27,7 +27,8 @@ const $=sel=>document.querySelector(sel);
 const $$=sel=>Array.from(document.querySelectorAll(sel));
 const toast=(s,isErr=false)=>{const el=$('#toast');el.textContent=s;el.className='toast'+(isErr?' error':'');clearTimeout(el._t);el._t=setTimeout(()=>el.classList.add('hidden'),5500)};
 const busy=d=>{inflight=Math.max(0,inflight+d);const p=$('#progress');if(p)p.classList.toggle('on',inflight>0)};
-const rpc=async(name,args={})=>{busy(1);try{const {data,error}=await sb.rpc('tsi_so_'+name,args);if(error){if(!error.code)state.online=false;throw new Error(error.message||'Terjadi kesalahan server')}state.online=true;return data}finally{busy(-1)}};
+const SYNC_RPCS=new Set(['upload','start','start_cycle','submit','approve','recount','validate_edit','validate_line','schedule_create','schedule_update','schedule_delete','archive_cycles','hard_delete','unlock','ba_sign','ba_sign_bulk','ba_adjust','ba_adjust_bulk','ba_clean','assign_user','set_store_spv','set_store_area','rounds_resync','activate_user']);
+const rpc=async(name,args={})=>{busy(1);try{const {data,error}=await sb.rpc('tsi_so_'+name,args);if(error){if(!error.code)state.online=false;throw new Error(error.message||'Terjadi kesalahan server')}state.online=true;if(SYNC_RPCS.has(name))notifySync(name,args.p_store||null);return data}finally{busy(-1)}};
 const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 const isoUTC=d=>d.toISOString().slice(0,10);
 state.dash.range=newRange();state.sch.range=newRange();state.exp.range=newRange();
@@ -196,7 +197,7 @@ function loginView(message=''){
 }
 async function start(){
  const {data:{user}}=await sb.auth.getUser();if(!user){loginView();return}
- try{state.me=await rpc('me');state.stores=state.me.stores||[];state.store=state.me.store_code||state.stores[0]?.code||'';state.page='dashboard';await refreshDashboard();shell();await render();startPresence()}
+ try{state.me=await rpc('me');state.stores=state.me.stores||[];state.store=state.me.store_code||state.stores[0]?.code||'';state.page='dashboard';await refreshDashboard();shell();await render();startPresence();startSync()}
  catch(ex){loginView('Login berhasil, tetapi '+ex.message);toast(ex.message,true)}
 }
 const PAGE={
@@ -247,7 +248,7 @@ async function softRefresh(){
 }
 ACT['refresh']=async()=>{try{await softRefresh();await render();toast('Data diperbarui dari server')}catch(ex){toast(ex.message,true)}};
 ACT['app-reset']=()=>{location.reload()};
-ACT['logout']=async()=>{stopPresence();await sb.auth.signOut();loginView()};
+ACT['logout']=async()=>{stopPresence();stopSync();await sb.auth.signOut();loginView()};
 function updateNav(){const el=$('#nav');if(!el)return;let last='',html='';const b=state.badges;
  for(const [id,title,icon,section] of menu()){
   if(section!==last){html+=`<div class="nav-sec">${section}</div>`;last=section}
@@ -1471,6 +1472,28 @@ function renderPresence(){
       <div class="small muted">${escapeHTML(x.act||'')}</div>
       <div class="small muted">${mins<1?'baru saja':mins+' menit lalu'}</div></div></div>`}).join('')||'<div class="empty small">Tidak ada user lain yang aktif.</div>');
  }
+}
+let syncCh=null,syncTimer=null;
+function startSync(){
+ if(syncCh)return;
+ try{syncCh=sb.channel('so-sync',{config:{broadcast:{self:false}}}).on('broadcast',{event:'changed'},({payload})=>onRemoteChanged(payload)).subscribe()}
+ catch(e){syncCh=null}
+}
+function stopSync(){if(syncCh){try{sb.removeChannel(syncCh)}catch(e){}syncCh=null}clearTimeout(syncTimer)}
+function notifySync(kind,store){
+ if(!syncCh)return;
+ try{const r=syncCh.send({type:'broadcast',event:'changed',payload:{kind,store,at:Date.now()}});if(r&&r.catch)r.catch(()=>{})}catch(e){}
+}
+function onRemoteChanged(){
+ clearTimeout(syncTimer);
+ syncTimer=setTimeout(refreshFromRemote,400);
+}
+async function refreshFromRemote(){
+ try{await refreshDashboard()}catch(e){return}
+ const a=document.activeElement;
+ const typing=!!(a&&a.closest&&a.closest('#content')&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName));
+ if(typing||upRows.length)return;
+ try{await render()}catch(e){}
 }
 function startPresence(){
  if(presCh||!state.me)return;
