@@ -1593,7 +1593,8 @@ async function showBA(){
  const rows=baFiltered(b);
  const picked=all.filter(x=>b.sel.has(x.id));
  const useSel=picked.length>0;
- const scope=useSel?picked:rows;
+ // Aksi hanya berlaku untuk BA yang dicentang. Tanpa pilihan, semua tombol aksi nonaktif.
+ const scope=picked;
  const role=state.me.role;
  const canSpv=role==='spv'||role==='admin',canMgr=role==='admin';
  const cSpv=scope.filter(x=>!x.spv_at).length;
@@ -1607,7 +1608,7 @@ async function showBA(){
   <div class="ba-tabs">${BA_LABEL.map(([k,l])=>`<button class="tab ${b.status===k?'on':''}" data-act="ba-filter" data-k="${k}">${l} <b>${n(all.filter(x=>BA_MATCH[k](x)&&(b.store==='ALL'||x.store_code===b.store)).length)}</b></button>`).join('')}</div>
   <div class="ba-bulk no-print"><select class="input" data-change="ba-store"><option value="ALL">Semua toko</option>${stores.map(([c,nm])=>`<option value="${escapeHTML(c)}" ${b.store===c?'selected':''}>${escapeHTML(nm||c)}</option>`).join('')}</select>${rstHTML('ba')}</div>
   <div class="ba-bar no-print">
-   <div class="ba-scope"><div><b>Berlaku untuk:</b> ${useSel?`${n(picked.length)} BA yang dipilih`:`semua ${n(rows.length)} BA di filter ini`}${useSel?`<button class="btn ghost sm" data-act="ba-clear-sel">Kosongkan pilihan</button>`:''}</div><small class="muted">Centang BA untuk memilih sebagian. Tanpa centang, aksi berlaku untuk semua BA di filter.</small></div>
+   <div class="ba-scope"><div><b>Berlaku untuk:</b> ${useSel?`${n(picked.length)} BA yang dipilih`:'belum ada BA dipilih'}${useSel?`<button class="btn ghost sm" data-act="ba-clear-sel">Kosongkan pilihan</button>`:''}</div><small class="muted">Centang BA terlebih dahulu. Aksi hanya berlaku untuk BA yang dicentang.</small></div>
    <div class="ba-acts">
     ${canSpv?act('Tanda tangan SPV','sign-spv',cSpv,'primary'):''}
     ${canMgr?act('Setujui Manager','sign-mgr',cMgr,'primary'):''}
@@ -1727,7 +1728,8 @@ ACT['ba-download']=async()=>{await baDownload([baState().open]);await render()};
 ACT['ba-run']=async el=>{
  const b=baState();const k=el.dataset.do;
  const picked=(b.all||[]).filter(x=>b.sel.has(x.id));
- const scope=picked.length?picked:baFiltered(b);
+ const scope=picked;
+ if(!picked.length)return toast('Pilih BA terlebih dahulu dengan mencentangnya.',true);
  if(k==='html'){
   if(!picked.length&&!confirm(`Unduh ${n(scope.length)} BA dalam satu file dan tandai sudah diekspor?`))return;
   await baDownload(scope.map(x=>x.id));
