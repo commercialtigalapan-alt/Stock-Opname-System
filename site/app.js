@@ -1096,30 +1096,25 @@ async function showValidation(){
  const v=state.validation;
  if(v.open)return loadValidation();
  const all=assignNo(await rpc('schedule_list',{p_store:null}));
- // APPROVED tanpa selisih (100%, 0 variance) sudah selesai dan tidak perlu divalidasi lagi.
- v.rows=all.filter(r=>r.status==='SUBMITTED'||(r.status==='APPROVED'&&(r.variance||0)>0));
+ // Hanya SO yang menunggu validasi. SO APPROVED dipindah ke menu Export & Pembersihan.
+ v.rows=all.filter(r=>r.status==='SUBMITTED');
  $('#content').innerHTML=`<div class="steps"><span>Counting</span><i>→</i><span>Submit Store</span><i>→</i><span class="on">Validasi SPV</span><i>→</i><span>Approved</span></div>
  <div class="card">
   <div class="card-head"><div><h3>Validasi SPV</h3><p class="muted small">Review hasil counting Store, validasi selisih, lalu approve SO.</p></div><span class="chip blue"><i></i>${n(v.rows.length)} SO</span></div>
   <div class="toolbar"><input id="vListSearch" class="input grow" placeholder="Cari SO / Store" value="${escapeHTML(v.listQ)}"/>
-   <select id="vStatus" class="input" data-change="v-status"><option value="ALL" ${v.status==='ALL'?'selected':''}>Semua Status</option><option value="SUBMITTED" ${v.status==='SUBMITTED'?'selected':''}>Validasi SPV</option><option value="APPROVED" ${v.status==='APPROVED'?'selected':''}>Approved</option></select></div>
-  <div class="bulkbar"><button class="btn outline" data-act="val-sel-all">Pilih semua (Approved)</button><button class="btn outline" data-act="val-sel-none">Kosongkan</button>
-   <button class="btn dark" data-act="val-csv-sel">⤓ Export CSV terpilih</button><span class="muted small" id="valSelCount">${n((state.validation.sel||new Set()).size)} dipilih</span></div>
+   <select id="vStatus" class="input" data-change="v-status"><option value="ALL" ${v.status==='ALL'?'selected':''}>Semua Status</option><option value="SUBMITTED" ${v.status==='SUBMITTED'?'selected':''}>Validasi SPV</option></select></div>
   <div id="vBody"></div>
  </div>`;
  drawValRows();
 }
 function valAcc(r){const t=(r.tally||0)+(r.variance||0);return t?(r.tally||0)/t:null}
 function valFiltered(){const v=state.validation;const q=(v.listQ||'').trim().toLowerCase();return v.rows.filter(r=>{if(q&&!(r.no+' '+r.store_name).toLowerCase().includes(q))return false;if(v.status!=='ALL'&&r.status!==v.status)return false;return true})}
-const valExportable=r=>r.status==='APPROVED'&&!r.archived;
-function updateValSelCount(){const l=$('#valSelCount');if(l)l.textContent=`${n((state.validation.sel||new Set()).size)} dipilih`}
 function drawValRows(){
- const v=state.validation;v.sel=v.sel||new Set();
+ const v=state.validation;
  const rows=valFiltered();
  const body=$('#vBody');if(!body)return;
- const valRowHTML=r=>`<tr><td>${valExportable(r)?`<input type="checkbox" data-change="val-chk" value="${r.id}" ${v.sel.has(r.id)?'checked':''}/>`:''}</td><td><b class="mono">${escapeHTML(r.no)}</b><br><small class="muted">${r.so_type==='PARTIAL'?'PARTIAL':'GRAND'}${r.archived?' • Diarsipkan':''}</small></td><td>${escapeHTML(r.store_name)}</td><td>${fmtDate(r.planned_date)}</td><td>${escapeHTML(r.pic||'-')}</td><td>${chip(r.status)}</td><td class="num">${n(r.scope_count)}</td><td class="num"><b>${P(valAcc(r))}</b><br><small class="muted">${n(r.variance||0)} variance</small></td><td>${btn('Validasi','val-open','primary',{id:r.id,store:r.store_code})}${valExportable(r)?' '+btn('⤓ CSV','val-csv-row','dark',{id:r.id}):''}</td></tr>`;
- body.innerHTML=monthFolders('val',rows,r=>mfKeyDate(r.planned_date),g=>`<div class="tablewrap"><table><thead><tr><th></th><th>SO</th><th>Store</th><th>Tanggal</th><th>PIC</th><th>Status</th><th class="num">SKU</th><th class="num">SKU Accuracy</th><th>Action</th></tr></thead><tbody>${g.map(valRowHTML).join('')}</tbody></table></div>`,g=>`${n(g.length)} SO · ${n(g.filter(valExportable).length)} bisa diexport`)||'<div class="empty">Belum ada SO yang menunggu validasi.</div>';
- updateValSelCount();
+ const valRowHTML=r=>`<tr><td><b class="mono">${escapeHTML(r.no)}</b><br><small class="muted">${r.so_type==='PARTIAL'?'PARTIAL':'GRAND'}</small></td><td>${escapeHTML(r.store_name)}</td><td>${fmtDate(r.planned_date)}</td><td>${escapeHTML(r.pic||'-')}</td><td>${chip(r.status)}</td><td class="num">${n(r.scope_count)}</td><td class="num"><b>${P(valAcc(r))}</b><br><small class="muted">${n(r.variance||0)} variance</small></td><td>${btn('Validasi','val-open','primary',{id:r.id,store:r.store_code})}</td></tr>`;
+ body.innerHTML=monthFolders('val',rows,r=>mfKeyDate(r.planned_date),g=>`<div class="tablewrap"><table><thead><tr><th>SO</th><th>Store</th><th>Tanggal</th><th>PIC</th><th>Status</th><th class="num">SKU</th><th class="num">SKU Accuracy</th><th>Action</th></tr></thead><tbody>${g.map(valRowHTML).join('')}</tbody></table></div>`,g=>`${n(g.length)} SO`)||'<div class="empty">Belum ada SO yang menunggu validasi.</div>';
 }
 CHG['v-status']=el=>{state.validation.status=el.value;drawValRows()};
 ACT['val-open']=async el=>{state.page='validation';const v=state.validation;v.cycle=el.dataset.id;v.open=true;v.offset=0;v.search='';v.filter='VARIANCE';state.store=el.dataset.store||state.store;await render()};
@@ -1180,13 +1175,6 @@ ACT['val-next']=async()=>{const v=state.validation;if(!v.data||v.offset+50>=v.da
 ACT['val-approve']=async()=>{const v=state.validation;if(!confirm('Approve SO? Setelah disetujui, hasil akan dikunci.'))return;await rpc('approve',{p_cycle:v.data.cycle_id});toast('SO berhasil APPROVED');await refreshDashboard();await loadValidation()};
 ACT['val-recount']=async()=>{const v=state.validation;const reason=prompt('Alasan Recount (minimal 5 karakter):');if(reason===null)return;await rpc('recount',{p_cycle:v.data.cycle_id,p_reason:reason});toast('SO dikembalikan untuk recount');await refreshDashboard();await loadValidation()};
 ACT['val-export']=async()=>{const v=state.validation;const k=await exportCombined([{id:v.data.cycle_id,no:'SO',store:labelStore(state.store),date:'',type:''}]);toast(`CSV diunduh: ${n(k)} SKU`)};
-// Export CSV dari daftar Validasi: satu SO (per baris) atau banyak SO sekaligus (satu file gabungan).
-const valSelItems=()=>{const v=state.validation;const items=v.rows.filter(r=>v.sel.has(r.id)&&valExportable(r)).map(exportItem);if(!items.length)throw Error('Pilih minimal satu SO APPROVED yang belum dibersihkan.');return items};
-ACT['val-sel-all']=()=>{const v=state.validation;v.sel=new Set(valFiltered().filter(valExportable).map(r=>r.id));drawValRows()};
-ACT['val-sel-none']=()=>{state.validation.sel=new Set();drawValRows()};
-CHG['val-chk']=el=>{const v=state.validation;v.sel=v.sel||new Set();el.checked?v.sel.add(el.value):v.sel.delete(el.value);updateValSelCount()};
-ACT['val-csv-sel']=async()=>{const items=valSelItems();const k=await exportCombined(items);state.validation.sel=new Set();toast(`CSV gabungan diunduh: ${n(items.length)} SO, ${n(k)} baris.`);await showValidation()};
-ACT['val-csv-row']=async el=>{const r=state.validation.rows.find(x=>x.id===el.dataset.id);if(!r)throw Error('SO tidak ditemukan di daftar.');const k=await exportCombined([exportItem(r)]);toast(`CSV diunduh: ${n(k)} SKU.`);await showValidation()};
 
 /* ---------- Export & Pembersihan Database ---------- */
 const KEYS_EXPORT=['SO_NO','STORE','TANGGAL','TIPE','SKU','NAME_VARIANT','CATEGORY','TEAM','SYSTEM_AT_START','DISPLAY','REJECT','RAK_UTAMA','RAK_CADANGAN','ACTUAL','ADJUSTMENT','UNIT_COST','REASON'];
