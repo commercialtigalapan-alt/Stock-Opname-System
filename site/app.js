@@ -475,6 +475,7 @@ async function showSchedule(){
 }
 document.addEventListener('toggle',e=>{const d=e.target;if(d&&d.classList&&d.classList.contains('store-folder')&&d.dataset.code){state.sch.folders=state.sch.folders||{};state.sch.folders[d.dataset.code]=d.open}},true);
 document.addEventListener('toggle',e=>{const d=e.target;if(d&&d.classList&&d.classList.contains('month-folder')&&d.dataset.mkey){state.exp.months=state.exp.months||{};state.exp.months[d.dataset.mkey]=d.open}},true);
+document.addEventListener('toggle',e=>{const d=e.target;if(d&&d.classList&&d.classList.contains('month-folder')&&d.dataset.mfkey){state.mf=state.mf||{};state.mf[d.dataset.mfkey]=d.open}},true);
 CHG['sch-filter']=async el=>{state.sch.store=el.value;await showSchedule()};
 ACT['sch-start']=async el=>{
  if(!confirm('Mulai SO sekarang? Stok sistem diambil dari inventory saat ini.'))return;
@@ -820,7 +821,7 @@ async function showCountList(){
  $('#content').innerHTML=`<div class="card">
   <div class="toolbar"><input id="cListSearch" class="input grow" placeholder="Cari SO Number / Store" value="${escapeHTML(c.listQ)}"/>${rstHTML('count')}</div>
   <div class="bulkbar"><button class="btn outline" data-act="c-all">Pilih Semua</button><button class="btn outline" data-act="c-none">Kosongkan</button>${canManage()?'<button class="btn danger" data-act="c-bulk-del">Hapus Dipilih</button>':''}<span class="muted small" id="cSelCount"></span></div>
-  <div class="tablewrap"><table><thead><tr><th></th><th>SO Number</th><th>Store</th><th>Tanggal</th><th>Tipe</th><th>Status</th><th class="num">SKU</th><th>Action</th></tr></thead><tbody id="cBody"></tbody></table></div>
+  <div id="cBody"></div>
  </div>`;
  drawCountRows();
 }
@@ -830,11 +831,12 @@ function countActions(r){
  else{a.push(btn('Lanjut Counting','count-open','primary',{store:r.store_code,cycle:r.id}));if(canManage())a.push(btn('Hapus','sch-del','danger',{id:r.id}))}
  return a.join('');
 }
+function cntListRowHTML(r){const c=state.count;return `<tr><td><input type="checkbox" data-change="c-chk" value="${r.id}" ${c.sel.has(r.id)?'checked':''} ${canManage()?'':'disabled'}/></td><td><b class="mono">${escapeHTML(r.no)}</b></td><td>${escapeHTML(r.store_name)}</td><td>${fmtDate(r.planned_date)}</td><td>${r.so_type==='PARTIAL'?'PARTIAL':'GRAND'}</td><td>${chip(r.status)}</td><td class="num">${n(r.scope_count)}</td><td class="actions">${countActions(r)}</td></tr>`}
 function drawCountRows(){
  const c=state.count;const q=(c.listQ||'').trim().toLowerCase();
  const rows=c.rows.filter(r=>!q||(r.no+' '+r.store_name).toLowerCase().includes(q));
  const body=$('#cBody');if(!body)return;
- body.innerHTML=rows.map(r=>`<tr><td><input type="checkbox" data-change="c-chk" value="${r.id}" ${c.sel.has(r.id)?'checked':''} ${canManage()?'':'disabled'}/></td><td><b class="mono">${escapeHTML(r.no)}</b></td><td>${escapeHTML(r.store_name)}</td><td>${fmtDate(r.planned_date)}</td><td>${r.so_type==='PARTIAL'?'PARTIAL':'GRAND'}</td><td>${chip(r.status)}</td><td class="num">${n(r.scope_count)}</td><td class="actions">${countActions(r)}</td></tr>`).join('')||'<tr><td colspan="8" class="empty">Tidak ada SO yang perlu dihitung.</td></tr>';
+ body.innerHTML=monthFolders('count',rows,r=>mfKeyDate(r.planned_date),g=>`<div class="tablewrap"><table><thead><tr><th></th><th>SO Number</th><th>Store</th><th>Tanggal</th><th>Tipe</th><th>Status</th><th class="num">SKU</th><th>Action</th></tr></thead><tbody>${g.map(cntListRowHTML).join('')}</tbody></table></div>`,g=>`${n(g.length)} SO`)||'<div class="empty">Tidak ada SO yang perlu dihitung.</div>';
  const lbl=$('#cSelCount');if(lbl)lbl.textContent=`${c.sel.size} dipilih`;
 }
 CHG['c-chk']=el=>{const c=state.count;el.checked?c.sel.add(el.value):c.sel.delete(el.value);const lbl=$('#cSelCount');if(lbl)lbl.textContent=`${c.sel.size} dipilih`};
@@ -1077,6 +1079,18 @@ async function openCountScanner(){
  }catch(e){stopCountScanner();toast('Kamera tidak dapat dibuka: '+e.message,true)}
 }
 
+/* ---------- Folder per bulan (Counting, Validasi SPV, BA) ----------
+   Dipakai bersama: tiap bulan jadi <details> yang bisa dibuka/tutup. Status buka/tutup disimpan di state.mf. */
+const mfKeyDate=d=>(d||'').slice(0,7)||'0000-00';
+const mfKeyTs=t=>{if(!t)return '0000-00';const p=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Makassar',year:'numeric',month:'2-digit'}).formatToParts(new Date(t));return `${p.find(x=>x.type==='year').value}-${p.find(x=>x.type==='month').value}`};
+const mfLabel=k=>k==='0000-00'?'Tanpa tanggal':new Date(+k.slice(0,4),+k.slice(5,7)-1,1).toLocaleDateString('id-ID',{month:'long',year:'numeric'});
+function monthFolders(pg,rows,keyOf,inner,meta){
+ const m=new Map();for(const r of rows){const k=keyOf(r);if(!m.has(k))m.set(k,[]);m.get(k).push(r)}
+ const st=state.mf||{};
+ return [...m.keys()].sort().reverse().map(k=>{const g=m.get(k);const open=st[pg+'|'+k]!==false;
+  return `<details class="card store-folder month-folder" data-mfkey="${pg}|${k}"${open?' open':''}><summary><span class="sf-name">${mfLabel(k)}</span><span class="sf-meta">${meta(g)}</span></summary>${inner(g)}</details>`}).join('');
+}
+
 /* ---------- Validasi SPV: sistem live, 4 posisi, status, alasan Store, qty & alasan SPV ---------- */
 async function showValidation(){
  const v=state.validation;
@@ -1091,7 +1105,7 @@ async function showValidation(){
    <select id="vStatus" class="input" data-change="v-status"><option value="ALL" ${v.status==='ALL'?'selected':''}>Semua Status</option><option value="SUBMITTED" ${v.status==='SUBMITTED'?'selected':''}>Validasi SPV</option><option value="APPROVED" ${v.status==='APPROVED'?'selected':''}>Approved</option></select></div>
   <div class="bulkbar"><button class="btn outline" data-act="val-sel-all">Pilih semua (Approved)</button><button class="btn outline" data-act="val-sel-none">Kosongkan</button>
    <button class="btn dark" data-act="val-csv-sel">⤓ Export CSV terpilih</button><span class="muted small" id="valSelCount">${n((state.validation.sel||new Set()).size)} dipilih</span></div>
-  <div class="tablewrap"><table><thead><tr><th></th><th>SO</th><th>Store</th><th>Tanggal</th><th>PIC</th><th>Status</th><th class="num">SKU</th><th class="num">SKU Accuracy</th><th>Action</th></tr></thead><tbody id="vBody"></tbody></table></div>
+  <div id="vBody"></div>
  </div>`;
  drawValRows();
 }
@@ -1103,7 +1117,8 @@ function drawValRows(){
  const v=state.validation;v.sel=v.sel||new Set();
  const rows=valFiltered();
  const body=$('#vBody');if(!body)return;
- body.innerHTML=rows.map(r=>`<tr><td>${valExportable(r)?`<input type="checkbox" data-change="val-chk" value="${r.id}" ${v.sel.has(r.id)?'checked':''}/>`:''}</td><td><b class="mono">${escapeHTML(r.no)}</b><br><small class="muted">${r.so_type==='PARTIAL'?'PARTIAL':'GRAND'}${r.archived?' • Diarsipkan':''}</small></td><td>${escapeHTML(r.store_name)}</td><td>${fmtDate(r.planned_date)}</td><td>${escapeHTML(r.pic||'-')}</td><td>${chip(r.status)}</td><td class="num">${n(r.scope_count)}</td><td class="num"><b>${P(valAcc(r))}</b><br><small class="muted">${n(r.variance||0)} variance</small></td><td>${btn('Validasi','val-open','primary',{id:r.id,store:r.store_code})}${valExportable(r)?' '+btn('⤓ CSV','val-csv-row','dark',{id:r.id}):''}</td></tr>`).join('')||'<tr><td colspan="9" class="empty">Belum ada SO yang menunggu validasi.</td></tr>';
+ const valRowHTML=r=>`<tr><td>${valExportable(r)?`<input type="checkbox" data-change="val-chk" value="${r.id}" ${v.sel.has(r.id)?'checked':''}/>`:''}</td><td><b class="mono">${escapeHTML(r.no)}</b><br><small class="muted">${r.so_type==='PARTIAL'?'PARTIAL':'GRAND'}${r.archived?' • Diarsipkan':''}</small></td><td>${escapeHTML(r.store_name)}</td><td>${fmtDate(r.planned_date)}</td><td>${escapeHTML(r.pic||'-')}</td><td>${chip(r.status)}</td><td class="num">${n(r.scope_count)}</td><td class="num"><b>${P(valAcc(r))}</b><br><small class="muted">${n(r.variance||0)} variance</small></td><td>${btn('Validasi','val-open','primary',{id:r.id,store:r.store_code})}${valExportable(r)?' '+btn('⤓ CSV','val-csv-row','dark',{id:r.id}):''}</td></tr>`;
+ body.innerHTML=monthFolders('val',rows,r=>mfKeyDate(r.planned_date),g=>`<div class="tablewrap"><table><thead><tr><th></th><th>SO</th><th>Store</th><th>Tanggal</th><th>PIC</th><th>Status</th><th class="num">SKU</th><th class="num">SKU Accuracy</th><th>Action</th></tr></thead><tbody>${g.map(valRowHTML).join('')}</tbody></table></div>`,g=>`${n(g.length)} SO · ${n(g.filter(valExportable).length)} bisa diexport`)||'<div class="empty">Belum ada SO yang menunggu validasi.</div>';
  updateValSelCount();
 }
 CHG['v-status']=el=>{state.validation.status=el.value;drawValRows()};
@@ -1604,8 +1619,12 @@ async function showBA(){
     ${useSel?act('Bersihkan dari database','clean',cnt.clean,'danger'):''}
    </div>
   </div>
-  <div class="tablewrap"><table><thead><tr><th><input type="checkbox" data-change="ba-pick-all" ${allOn?'checked':''}/></th><th>No BA</th><th>Toko</th><th>Dibuat</th><th>SPV</th><th>Manager</th><th>Adjust</th><th>Export</th><th>Aksi</th></tr></thead><tbody>
-  ${rows.map(x=>`<tr>
+  ${monthFolders('ba',rows,x=>mfKeyTs(x.created_at),g=>baTableHTML(g,b,allOn),g=>`${n(g.length)} BA`)||'<div class="empty">Tidak ada BA pada filter ini.</div>'}
+ </div>`;
+}
+// Tabel BA untuk satu folder bulan.
+function baTableHTML(g,b,allOn){return `<div class="tablewrap"><table><thead><tr><th><input type="checkbox" data-change="ba-pick-all" ${allOn?'checked':''}/></th><th>No BA</th><th>Toko</th><th>Dibuat</th><th>SPV</th><th>Manager</th><th>Adjust</th><th>Export</th><th>Aksi</th></tr></thead><tbody>
+  ${g.map(x=>`<tr>
    <td><input type="checkbox" data-change="ba-pick" data-id="${escapeHTML(x.id)}" ${b.sel.has(x.id)?'checked':''}/></td>
    <td><b class="mono">${escapeHTML(x.ba_no)}</b></td>
    <td>${escapeHTML(x.store_name)}</td>
@@ -1614,8 +1633,8 @@ async function showBA(){
    <td>${x.mgr_at?`<span class="chip green"><i></i>${escapeHTML(x.mgr_name)}</span>`:'<span class="chip gray"><i></i>Menunggu</span>'}</td>
    <td><label class="ba-adj"><input type="checkbox" data-change="ba-adj" data-id="${escapeHTML(x.id)}" ${x.adj_at?'checked':''} ${x.mgr_at?'':'disabled'}/> ${x.adj_at?`Sudah · ${escapeHTML(x.adj_name||'')}`:(x.mgr_at?'Tandai sudah':'Setelah Manager')}</label></td>
    <td>${x.exported_at?chip('TALLY','Sudah'):chip('SUBMITTED','Belum')}</td>
-   <td>${btn('Detail','ba-open','ghost sm',{id:x.id})}</td></tr>`).join('')||'<tr><td colspan="9" class="empty">Tidak ada BA pada filter ini.</td></tr>'}
-  </tbody></table></div></div>`;
+   <td>${btn('Detail','ba-open','ghost sm',{id:x.id})}</td></tr>`).join('')}
+  </tbody></table></div>`;
 }
 function baArticle(h,s,lines,total,full){
  const stamp=(at,name,empty)=>at?`<b>${escapeHTML(name||'')}</b><small>Ditandatangani secara elektronik · ${fmtDT(at)}</small>`:`<i class="muted">${empty}</i>`;
