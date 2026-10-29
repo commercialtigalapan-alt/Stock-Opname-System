@@ -307,75 +307,68 @@ function areaRows(rows){
   const m=map.get(k);m.stores++;if(r.spv)m.spv.add(r.spv);['so_total','so_approved','appr_total','appr_tally','appr_sys_qty','appr_abs_qty','appr_sys_value','appr_abs_value','net_qty_diff','abs_value'].forEach(f=>m[f]+=Number(r[f])||0)}
  return [...map.values()].sort((a,b)=>a.area.localeCompare(b.area));
 }
-// Agregasi KPI dari baris toko (dipakai saat filter area/toko aktif).
+// Agregasi KPI dari baris toko (dipakai saat filter SPV/toko aktif).
 const KPI_KEYS=['so_total','so_finished','so_approved','so_submitted','so_running','so_scheduled','so_overdue','sku_done','appr_total','appr_tally','appr_sys_qty','appr_abs_qty','appr_sys_value','appr_abs_value','net_qty_diff','missing_value','surplus_value','abs_value'];
 function sumKpi(rows){const o={};KPI_KEYS.forEach(f=>{o[f]=rows.reduce((s,r)=>s+(Number(r[f])||0),0)});return o}
 const CHART_COLORS=['#2563eb','#16a34a','#f59e0b','#dc2626','#7c3aed','#0891b2','#db2777','#65a30d','#ea580c','#475569'];
 const BUCKETS=[['day','Harian'],['week','Mingguan'],['month','Bulanan'],['year','Tahunan']];
+const spvOf=r=>Array.isArray(r.spv_list)&&r.spv_list.length?r.spv_list:(r.spv?[r.spv]:[]);
 function bucketLabel(key,b){
  const d=new Date(key+'T00:00:00');
  if(b==='month')return d.toLocaleDateString('id-ID',{month:'short',year:'numeric'});
  if(b==='year')return String(d.getFullYear());
  return d.toLocaleDateString('id-ID',{day:'2-digit',month:'short'});
 }
-// Grafik garis SVG sederhana. series: [{name,color,values:[0..1|null],bold}]
-function lineChartSVG(series,labels){
- const W=960,H=320,L=52,R=16,T=16,B=44;const iw=W-L-R,ih=H-T-B;const cnt=labels.length;
- const x=i=>L+(cnt<=1?iw/2:i*iw/(cnt-1));
- // Skala sumbu mengikuti data (kelipatan 5% di bawah nilai terendah) agar perbedaan antar toko terlihat.
+// Grafik batang per periode (satu batang per toko) dengan garis tren per toko. Sumbu Y mengikuti data.
+function barTrendSVG(series,labels){
+ const W=960,H=340,L=52,R=16,T=16,B=48;const iw=W-L-R,ih=H-T-B;const cnt=labels.length;const m=Math.max(1,series.length);
  const vals=series.flatMap(s=>s.values).filter(v=>v!=null);
  const lo=vals.length?Math.min(...vals):0;
  let ystep=0.25;for(const c of [0.02,0.05,0.1,0.25]){if((1-Math.max(0,Math.floor((lo-0.02)/c)*c))/c<=5){ystep=c;break}}
  const yMin=Math.max(0,Math.floor((lo-0.02)/ystep)*ystep);
  const y=v=>T+ih*(1-Math.max(0,Math.min(1,(v-yMin)/(1-yMin))));
+ const gw=iw/Math.max(1,cnt);
+ const bw=Math.max(2,Math.min(26,gw*0.8/m));
+ const cx=(i,si)=>L+i*gw+gw/2-(m*bw)/2+si*bw+bw/2;
+ const base=y(yMin);
  let g='';
  for(let t=yMin;t<=1.000001;t+=ystep){const tt=Math.min(1,+t.toFixed(4));const yy=y(tt).toFixed(1);g+=`<line x1="${L}" x2="${W-R}" y1="${yy}" y2="${yy}" class="gl"/><text x="${L-8}" y="${(+yy+4).toFixed(1)}" class="gt" text-anchor="end">${Math.round(tt*100)}%</text>`}
  const step=Math.max(1,Math.ceil(cnt/12));
- labels.forEach((lb,i)=>{if(i%step!==0&&i!==cnt-1)return;g+=`<text x="${x(i).toFixed(1)}" y="${H-14}" class="gt" text-anchor="middle">${escapeHTML(lb)}</text>`});
- series.forEach(s=>{
+ labels.forEach((lb,i)=>{if(i%step!==0&&i!==cnt-1)return;g+=`<text x="${(L+i*gw+gw/2).toFixed(1)}" y="${H-16}" class="gt" text-anchor="middle">${escapeHTML(lb)}</text>`});
+ series.forEach((s,si)=>{
+  s.values.forEach((v,i)=>{if(v==null)return;const yy=y(v);g+=`<rect x="${(cx(i,si)-bw/2).toFixed(1)}" y="${yy.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(1,base-yy).toFixed(1)}" rx="2" fill="${s.color}" fill-opacity=".55"><title>${escapeHTML(s.name)} · ${escapeHTML(labels[i])}: ${P(v)}</title></rect>`});
   let path='',pen=false;
-  s.values.forEach((v,i)=>{if(v==null){pen=false;return}path+=(pen?'L':'M')+x(i).toFixed(1)+','+y(v).toFixed(1);pen=true});
-  if(path)g+=`<path d="${path}" fill="none" stroke="${s.color}" stroke-width="${s.bold?3.5:2}" stroke-linejoin="round" stroke-linecap="round"${s.dash?' stroke-dasharray="6 5"':''}/>`;
-  s.values.forEach((v,i)=>{if(v==null)return;g+=`<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="${s.bold?4:3}" fill="${s.color}"><title>${escapeHTML(s.name)} · ${escapeHTML(labels[i])}: ${P(v)}</title></circle>`});
+  s.values.forEach((v,i)=>{if(v==null){pen=false;return}path+=(pen?'L':'M')+cx(i,si).toFixed(1)+','+y(v).toFixed(1);pen=true});
+  if(path)g+=`<path d="${path}" fill="none" stroke="${s.color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`;
+  s.values.forEach((v,i)=>{if(v==null)return;g+=`<circle cx="${cx(i,si).toFixed(1)}" cy="${y(v).toFixed(1)}" r="3.5" fill="${s.color}"/>`});
  });
- return `<svg class="line-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Grafik tren akurasi SKU">${g}</svg>`;
+ return `<svg class="line-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Grafik batang dan tren akurasi SKU per toko">${g}</svg>`;
 }
-// Isi tab "Grafik & Tren": seluruh data mengikuti filter area, toko, jenis SO, dan rentang tanggal.
-function chartTabHTML(d,rows,k,trend){
+// Isi tab "Grafik & Tren". Periode grafik dan filter mengikuti filter utama di atas halaman.
+function chartTabHTML(d,rows,trend){
  const codes=new Set(rows.map(r=>r.code));
  const names=new Map(rows.map(r=>[r.code,r.name]));
  const tr=trend.filter(r=>codes.has(r.store_code));
  const buckets=[...new Set(tr.map(r=>r.bucket))].sort();
  const bl=buckets.map(b=>bucketLabel(b,d.bucket||'week'));
- // 1) Tren akurasi SKU per toko + garis gabungan
+ // 1) Tren akurasi SKU per toko: semua toko tampil, tanpa garis gabungan
  const stores=rows.filter(r=>tr.some(x=>x.store_code===r.code)).map(r=>r.code);
  const series=stores.map((code,i)=>({name:names.get(code),color:CHART_COLORS[i%CHART_COLORS.length],
   values:buckets.map(b=>{const x=tr.find(t=>t.store_code===code&&t.bucket===b);return x&&x.appr_total>0?x.appr_tally/x.appr_total:null})}));
- if(stores.length>1)series.push({name:'Gabungan',color:'#0f172a',bold:true,values:buckets.map(b=>{const l=tr.filter(t=>t.bucket===b);const tt=l.reduce((s,x)=>s+x.appr_total,0);return tt?l.reduce((s,x)=>s+x.appr_tally,0)/tt:null})});
  const trendHTML=buckets.length
-  ?`<div class="line-wrap">${lineChartSVG(series,bl)}</div><div class="legend">${series.map(s=>`<span><i style="background:${s.color}"></i>${escapeHTML(s.name)}</span>`).join('')}</div>`
+  ?`<div class="line-wrap">${barTrendSVG(series,bl)}</div><div class="legend">${series.map(s=>`<span><i style="background:${s.color}"></i>${escapeHTML(s.name)}</span>`).join('')}</div>`
   :'<div class="empty">Belum ada SO APPROVED pada periode ini.</div>';
- // 2) SKU accuracy per toko (urut tertinggi)
- const acc=rows.filter(r=>r.appr_total>0).map(r=>({name:r.name,v:accOf(r).sku})).sort((x,y)=>y.v-x.v);
- const accHTML=acc.length?acc.map(x=>{const p=Math.round(x.v*100);const tone=x.v>=.95?'ok':x.v>=.85?'warn':'bad';
-  return `<div class="hbar-row"><span class="hbar-l" title="${escapeHTML(x.name)}">${escapeHTML(x.name)}</span><div class="hbar-t"><span class="hbar-f ${tone}" style="width:${p}%"></span></div><b class="num">${P(x.v)}</b></div>`}).join(''):'<div class="empty">Belum ada SO APPROVED.</div>';
- // 3) Volume SO approved per periode
+ // 2) Volume SO approved per periode
  const vol=buckets.map(b=>tr.filter(t=>t.bucket===b).reduce((s,x)=>s+x.so_approved,0));
  const vmax=Math.max(1,...vol);
  const volHTML=buckets.length?`<div class="colchart">${vol.map((v,i)=>`<div class="col"><div class="col-bar" style="height:${Math.max(2,Math.round(v/vmax*100))}%"><span>${n(v)}</span></div><small>${escapeHTML(bl[i])}</small></div>`).join('')}</div>`:'<div class="empty">Belum ada SO APPROVED pada periode ini.</div>';
- // 4) Status SO (posisi seluruh SO)
- const parts=[['Terjadwal',k.so_scheduled,'stk-sch'],['Sedang Counting',k.so_running,'stk-run'],['Validasi SPV',k.so_submitted,'stk-sub'],['Approved',k.so_approved,'stk-app']];
- const tot2=parts.reduce((s,p)=>s+(Number(p[1])||0),0);
- const statusHTML=tot2?`<div class="stk-bar">${parts.map(p=>`<span class="${p[2]}" style="width:${((Number(p[1])||0)/tot2*100).toFixed(2)}%" title="${p[0]}: ${n(p[1])}"></span>`).join('')}</div><div class="st-legend">${parts.map(p=>`<span><i class="sw ${p[2]}"></i>${p[0]} · <b>${n(p[1])}</b></span>`).join('')}</div>`:'<div class="empty">Belum ada SO pada periode ini.</div>';
- // 5) Nilai selisih per toko (kekurangan vs kelebihan)
+ // 3) Nilai selisih per toko (kekurangan vs kelebihan)
  const vals=rows.map(r=>({name:r.name,m:Number(r.missing_value)||0,s:Number(r.surplus_value)||0})).filter(x=>x.m>0||x.s>0).sort((x,y)=>(y.m+y.s)-(x.m+x.s));
  const vmax2=Math.max(1,...vals.map(x=>Math.max(x.m,x.s)));
  const valHTML=vals.length?vals.map(x=>`<div class="hbar-pair"><span class="hbar-l" title="${escapeHTML(x.name)}">${escapeHTML(x.name)}</span><div><div class="hbar-t"><span class="hbar-f miss" style="width:${(x.m/vmax2*100).toFixed(1)}%"></span></div><div class="hbar-t"><span class="hbar-f sur" style="width:${(x.s/vmax2*100).toFixed(1)}%"></span></div></div><small class="num">${rp(-x.m)}<br>${rp(x.s,true)}</small></div>`).join('')+'<div class="legend"><span><i style="background:#dc2626"></i>Kekurangan</span><span><i style="background:#16a34a"></i>Kelebihan</span></div>':'<div class="empty">Tidak ada nilai selisih pada periode ini.</div>';
  return `<div class="chart-grid">
-  <div class="card chart-card chart-wide"><div class="card-head"><div><h3>Tren Akurasi SKU per Toko</h3><p class="muted small">Persentase SKU sesuai pada SO APPROVED, per periode.</p></div><div class="seg">${BUCKETS.map(([kk,l])=>`<button class="${(d.bucket||'week')===kk?'on':''}" data-act="dash-bucket" data-b="${kk}">${l}</button>`).join('')}</div></div>${trendHTML}</div>
-  <div class="card chart-card"><div class="card-head"><div><h3>SKU Accuracy per Toko</h3><p class="muted small">Urut tertinggi. Hijau ≥ 95%, kuning ≥ 85%, merah di bawahnya.</p></div></div>${accHTML}</div>
+  <div class="card chart-card chart-wide"><div class="card-head"><div><h3>Tren Akurasi SKU per Toko</h3><p class="muted small">Batang = akurasi SKU per periode, garis = arah tren. Sumbu Y tidak mulai dari 0 agar perbedaan terlihat.</p></div></div>${trendHTML}</div>
   <div class="card chart-card"><div class="card-head"><div><h3>Volume SO Approved</h3><p class="muted small">Jumlah SO APPROVED per periode.</p></div></div>${volHTML}</div>
-  <div class="card chart-card"><div class="card-head"><div><h3>Status SO</h3><p class="muted small">Posisi seluruh SO pada periode & filter.</p></div></div>${statusHTML}</div>
   <div class="card chart-card"><div class="card-head"><div><h3>Nilai Selisih per Toko</h3><p class="muted small">Kekurangan dan kelebihan stok pada SO APPROVED.</p></div></div>${valHTML}</div>
  </div>`;
 }
@@ -388,13 +381,15 @@ async function showDashboard(){
   rpc('kpi',{p_store:d.store||null,p_type:d.type||null,p_from:from,p_to:to}),
   rpc('store_analytics',{p_type:d.type||null,p_from:from,p_to:to}),
   wantChart?rpc('accuracy_trend',{p_type:d.type||null,p_from:from,p_to:to,p_bucket:d.bucket}):Promise.resolve([])]);
- const areas=[...new Set(analytics.map(r=>r.area).filter(Boolean))].sort((x,y)=>x.localeCompare(y));
- if(d.area&&!areas.includes(d.area))d.area='';
- if(d.store&&!analytics.some(r=>r.code===d.store&&(!d.area||r.area===d.area)))d.store='';
- const rows=analytics.filter(r=>(!d.area||r.area===d.area)&&(!d.store||r.code===d.store));
- const cards=state.dashboard.filter(s=>(!d.area||s.area===d.area)&&(!d.store||s.code===d.store));
- // KPI: tanpa filter memakai RPC kpi; dengan filter area/toko dijumlahkan dari baris toko yang terpilih.
- const k=(d.area||d.store)?sumKpi(rows):kpiRpc;
+ const spvs=[...new Set(analytics.flatMap(spvOf).filter(Boolean))].sort((x,y)=>x.localeCompare(y));
+ if(d.spv&&!spvs.includes(d.spv))d.spv='';
+ const bySpv=r=>!d.spv||spvOf(r).includes(d.spv);
+ if(d.store&&!analytics.some(r=>r.code===d.store&&bySpv(r)))d.store='';
+ const rows=analytics.filter(r=>bySpv(r)&&(!d.store||r.code===d.store));
+ const codes=new Set(rows.map(r=>r.code));
+ const cards=state.dashboard.filter(s=>codes.has(s.code));
+ // KPI: tanpa filter memakai RPC kpi; dengan filter SPV/toko dijumlahkan dari baris toko terpilih.
+ const k=(d.spv||d.store)?sumKpi(rows):kpiRpc;
  const a=accuracyOf(k),tot=k.so_total,fin=k.so_finished;
  const kpi=(cls,label,value,sub)=>`<div class="kpi ${cls}"><div class="kpi-l">${label}</div><div class="kpi-v">${value}</div><div class="kpi-s">${sub}</div></div>`;
  const vol=(cls,label,value,sub)=>`<div class="vol ${cls}"><div class="vol-l">${label}</div><div class="vol-v">${value}</div><div class="vol-s">${sub}</div></div>`;
@@ -426,7 +421,7 @@ async function showDashboard(){
   <div class="store-grid" ${gridStyle(cards.length)}>${cards.length?cards.map(storeCard).join(''):'<div class="empty">Belum ada toko untuk filter ini.</div>'}</div>`;
  }
  if(d.tab==='chart'){
-  body=chartTabHTML(d,rows,k,trend);
+  body=chartTabHTML(d,rows,trend);
  }
  if(d.tab==='acc'){
   const areaList=areaRows(rows);
@@ -452,22 +447,23 @@ async function showDashboard(){
  }
  $('#content').innerHTML=`<div class="card filter-card">
   <div class="filters">
-   <select class="input select" data-change="dash-area" id="dArea"><option value="">Semua Area</option>${areas.map(ar=>`<option value="${escapeHTML(ar)}" ${d.area===ar?'selected':''}>${escapeHTML(ar)}</option>`).join('')}</select>
-   <select class="input select" data-change="dash-filter" id="dStore"><option value="">Semua Store</option>${analytics.filter(r=>!d.area||r.area===d.area).map(r=>`<option value="${escapeHTML(r.code)}" ${d.store===r.code?'selected':''}>${escapeHTML(r.name)}</option>`).join('')}</select>
+   <select class="input select" data-change="dash-spv" id="dSpv"><option value="">Semua SPV</option>${spvs.map(sp=>`<option value="${escapeHTML(sp)}" ${d.spv===sp?'selected':''}>${escapeHTML(sp)}</option>`).join('')}</select>
+   <select class="input select" data-change="dash-filter" id="dStore"><option value="">Semua Store</option>${analytics.filter(bySpv).map(r=>`<option value="${escapeHTML(r.code)}" ${d.store===r.code?'selected':''}>${escapeHTML(r.name)}</option>`).join('')}</select>
    <select class="input select" data-change="dash-filter" id="dType"><option value="">Semua Jenis SO</option><option value="GRAND" ${d.type==='GRAND'?'selected':''}>Grand SO</option><option value="PARTIAL" ${d.type==='PARTIAL'?'selected':''}>Partial SO</option></select>
    ${rangeControlHTML('dash',d.range)}
+   <select class="input select" data-change="dash-bucket-sel" id="dBucket" title="Periode untuk grafik tren">${BUCKETS.map(([kk,l])=>`<option value="${kk}" ${d.bucket===kk?'selected':''}>Grafik: ${l}</option>`).join('')}</select>
   </div>
  </div>
  <div class="card tabs-card"><span class="tabs-lbl">ANALISA</span>${tabs.map(([id,l])=>`<button class="tab ${d.tab===id?'on':''}" data-act="dash-tab" data-tab="${id}">${l}</button>`).join('')}</div>
  ${body}`;
  if(d.tab==='act'&&isAdmin())loadAudit().catch(()=>{});
 }
-CHG['dash-area']=async()=>{state.dash.area=$('#dArea').value;state.dash.store='';await showDashboard()};
-ACT['dash-bucket']=async el=>{state.dash.bucket=el.dataset.b;await showDashboard()};
+CHG['dash-spv']=async()=>{state.dash.spv=$('#dSpv').value;state.dash.store='';await showDashboard()};
+CHG['dash-bucket-sel']=async()=>{state.dash.bucket=$('#dBucket').value;await showDashboard()};
 CHG['dash-filter']=async()=>{state.dash.store=$('#dStore').value;state.dash.type=$('#dType').value;await showDashboard()};
 ACT['dash-tab']=async el=>{state.dash.tab=el.dataset.tab;await showDashboard()};
 function resetPage(p){
- if(p==='dash'){state.dash.area='';state.dash.store='';state.dash.type='';state.dash.range=newRange()}
+ if(p==='dash'){state.dash.spv='';state.dash.store='';state.dash.type='';state.dash.bucket='week';state.dash.range=newRange()}
  else if(p==='sch'){state.sch.store='';state.sch.range=newRange()}
  else if(p==='exp'){state.exp.store='';state.exp.range=newRange();state.exp.sel=new Set()}
  else if(p==='count'){Object.assign(state.count,{offset:0,search:'',filter:'ALL',team:'',listQ:''})}
@@ -477,7 +473,7 @@ function resetPage(p){
 }
 const rstHTML=p=>`<button class="btn ghost sm filter-reset" data-act="filters-reset" data-p="${p}" title="Kembalikan filter di blok ini ke awal">↺ Reset</button>`;
 ACT['filters-reset']=async el=>{resetPage(el.dataset.p);await render()};
-ACT['dash-reset']=async()=>{state.dash.area='';state.dash.store='';state.dash.type='';state.dash.range=newRange();await showDashboard()};
+ACT['dash-reset']=async()=>{state.dash.spv='';state.dash.store='';state.dash.type='';state.dash.bucket='week';state.dash.range=newRange();await showDashboard()};
 
 /* ---------- Import CSV inventory ---------- */
 function parseCSV(text){
