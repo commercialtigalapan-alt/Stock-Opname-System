@@ -1109,6 +1109,7 @@ async function loadValidation(){
  const acc=complete?tally/complete:null;
  const mini=(cls,l,val,sub)=>`<div class="mini ${cls}"><small>${l}</small><b>${val}</b><span>${sub||''}</span></div>`;
  const editable=st==='SUBMITTED';
+ const noBA=st==='APPROVED'&&(sum.total_skus||0)>0&&sum.variance_skus===0&&sum.missing_skus===0;
  const rowHTML=x=>{const reason=x.spv_note||x.store_note||'';const delta=x.delta==null?'—':signed(x.delta);return `<tr data-sku="${escapeHTML(x.sku)}">
    <td class="nm"><div class="nm-sub">${nameBadge(x.name,x.category)}${x.team?`<span class="team-tag">${escapeHTML(x.team)}</span>`:''}</div></td>
    ${editable
@@ -1123,9 +1124,10 @@ async function loadValidation(){
  $('#content').innerHTML=`<div class="crumb"><button class="btn ghost" data-act="val-back">← Daftar SO</button><span class="muted small">${escapeHTML(labelStore(state.store)||'')}</span></div>
  <div class="mini-row">${mini('','Total SKU',n(sum.total_skus),'Seluruh SKU pada SO')}${mini('o','Variance',n(variance),'SKU selisih')}${mini('g','SKU Accuracy',P(acc),'tally / (tally + variance)')}${mini('a','Belum Lengkap',n(sum.missing_skus),'Posisi belum lengkap')}${mini('r','Blokir Approve',n(sum.blocking_skus),'Approve diblokir bila > 0')}</div>
  ${(sum.blocking_skus||0)>0?`<div class="note warning">${n(sum.blocking_skus)} SKU belum lengkap atau selisih belum beralasan. Approve diblokir sampai diperbaiki.</div>`:''}
+ ${noBA?`<div class="note info">SO ini 100% akurasi tanpa selisih, jadi tidak perlu Berita Acara maupun adjustment. SO dianggap selesai.</div>`:''}
  <div class="card">
-  <div class="card-head"><div class="row"><h3>Detail Validasi</h3>${chip(st)}</div>
-   <div class="row">${editable?btn('Recount','val-recount','danger')+btn('Approve SO','val-approve','primary'):''}${st==='APPROVED'?btn('Buat BA','ba-create','primary',{id:data.cycle_id}):''}${st==='APPROVED'&&!data.archived?btn('Export CSV','val-export','dark'):''}${st==='APPROVED'&&isAdmin()?btn('Hapus Permanen','so-hard-del','danger',{id:data.cycle_id}):''}</div></div>
+  <div class="card-head"><div class="row"><h3>Detail Validasi</h3>${noBA?chip('APPROVED','Selesai · tanpa BA'):chip(st)}</div>
+   <div class="row">${editable?btn('Recount','val-recount','danger')+btn('Approve SO','val-approve','primary'):''}${st==='APPROVED'&&!noBA?btn('Buat BA','ba-create','primary',{id:data.cycle_id}):''}${st==='APPROVED'&&!data.archived?btn('Export CSV','val-export','dark'):''}${st==='APPROVED'&&isAdmin()?btn('Hapus Permanen','so-hard-del','danger',{id:data.cycle_id}):''}</div></div>
   <div class="toolbar">
    <div class="seg" role="tablist" aria-label="Tampilan SKU">
     <button class="${v.filter==='VARIANCE'?'on':''}" data-act="val-filter" data-v="VARIANCE">Variance (${n(sum.variance_skus)})</button>
