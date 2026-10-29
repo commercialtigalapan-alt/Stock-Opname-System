@@ -339,7 +339,7 @@ function hbarTrendHTML(series,bl){
   const dCls=dl==null?'':dl>0.05?'up':dl<-0.05?'down':'';
   const poly=pts.map(([i,v])=>`${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
   const spark=`<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">${pts.length>1?`<polyline points="${poly}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`:''}${pts.map(([i,v])=>`<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="2.6" fill="${s.color}"><title>${escapeHTML(bl[i])}: ${P(v)}</title></circle>`).join('')}</svg>`;
-  return `<div class="trow"><span class="tl" title="${escapeHTML(s.name)}"><i style="background:${s.color}"></i>${escapeHTML(s.name)}</span><div class="ttrack"><span class="tfill" style="width:${(pos(last)*100).toFixed(1)}%;background:${s.color}"></span></div><b class="num">${P(last)}</b><span class="num tdelta ${dCls}">${dTxt}</span>${spark}</div>`;
+  return `<div class="trow"><span class="tl" title="${escapeHTML(s.name)}"><i style="background:${s.color}"></i>${escapeHTML(s.name)}</span><div class="ttrack"><span class="tfill ${last>=.95?'ok':last>=.85?'warn':'bad'}" style="width:${(pos(last)*100).toFixed(1)}%"></span></div><b class="num">${P(last)}</b><span class="num tdelta ${dCls}">${dTxt}</span>${spark}</div>`;
  }).join('');
  return `<div class="trend-rows">${head}${rows}</div>`;
 }
@@ -364,7 +364,7 @@ function chartTabHTML(d,rows,trend){
  const vmax2=Math.max(1,...vals.map(x=>Math.max(x.m,x.s)));
  const valHTML=vals.length?vals.map(x=>`<div class="hbar-pair"><span class="hbar-l" title="${escapeHTML(x.name)}">${escapeHTML(x.name)}</span><div><div class="hbar-t"><span class="hbar-f miss" style="width:${(x.m/vmax2*100).toFixed(1)}%"></span></div><div class="hbar-t"><span class="hbar-f sur" style="width:${(x.s/vmax2*100).toFixed(1)}%"></span></div></div><small class="num">${rp(-x.m)}<br>${rp(x.s,true)}</small></div>`).join('')+'<div class="legend"><span><i style="background:#dc2626"></i>Kekurangan</span><span><i style="background:#16a34a"></i>Kelebihan</span></div>':'<div class="empty">Tidak ada nilai selisih pada periode ini.</div>';
  return `<div class="chart-grid">
-  <div class="card chart-card chart-wide"><div class="card-head"><div><h3>Tren Akurasi SKU per Toko</h3><p class="muted small">Batang = akurasi SKU periode terakhir. Garis kecil = tren per periode, Δ = selisih dibanding periode sebelumnya.</p></div></div>${trendHTML}</div>
+  <div class="card chart-card chart-wide"><div class="card-head"><div><h3>Tren Akurasi SKU per Toko</h3><p class="muted small">Batang = akurasi SKU periode terakhir: hijau ≥ 95%, kuning ≥ 85%, merah &lt; 85%. Garis kecil = tren per periode, Δ = selisih dibanding periode sebelumnya.</p></div></div>${trendHTML}</div>
   <div class="card chart-card"><div class="card-head"><div><h3>Volume SO Approved</h3><p class="muted small">Jumlah SO APPROVED per periode.</p></div></div>${volHTML}</div>
   <div class="card chart-card"><div class="card-head"><div><h3>Nilai Selisih per Toko</h3><p class="muted small">Kekurangan dan kelebihan stok pada SO APPROVED.</p></div></div>${valHTML}</div>
  </div>`;

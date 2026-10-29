@@ -1212,3 +1212,4 @@ body{-webkit-font-smoothing:antialiased}
  .trow .spark{grid-column:1/-1;order:6}
  .trow .tdelta{order:4;text-align:left}
 }
+.tfill.ok{background:#16a34a}.tfill.warn{background:#f59e0b}.tfill.bad{background:#dc2626}
