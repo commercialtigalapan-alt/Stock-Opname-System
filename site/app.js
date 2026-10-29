@@ -328,7 +328,7 @@ function barTrendSVG(series,labels){
  const yMin=Math.max(0,Math.floor((lo-0.02)/ystep)*ystep);
  const y=v=>T+ih*(1-Math.max(0,Math.min(1,(v-yMin)/(1-yMin))));
  const gw=iw/Math.max(1,cnt);
- const bw=Math.max(2,Math.min(26,gw*0.8/m));
+ const bw=Math.max(4,Math.min(72,gw*0.86/m));
  const cx=(i,si)=>L+i*gw+gw/2-(m*bw)/2+si*bw+bw/2;
  const base=y(yMin);
  let g='';
