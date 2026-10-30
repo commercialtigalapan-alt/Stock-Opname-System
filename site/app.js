@@ -1107,47 +1107,101 @@ function calcHistHTML(){
 }
 ACT['calc-hist-clear']=async()=>{calcLog=[];try{sessionStorage.removeItem('calcLog')}catch{};drawCalc()};
 // Simpan SKU dan posisi agar kalkulator tetap bisa mengisi baris yang benar walau tabel sudah dirender ulang.
-function openCalc(input,label){calc={input,typed:'',label:label||'Qty',sku:input.closest('tr')?.dataset.sku||'',pos:input.dataset.pos||''};drawCalc()}
+function openCalc(input,label){calc={input,expr:'',prev:'',eq:false,label:label||'Qty',sku:input.closest('tr')?.dataset.sku||'',pos:input.dataset.pos||''};drawCalc()}
 function calcLiveInput(){
  if(!calc)return null;
  if(calc.input&&calc.input.isConnected)return calc.input;
  const tr=[...document.querySelectorAll('#countTable tr[data-sku]')].find(x=>x.dataset.sku===calc.sku);
  return tr?tr.querySelector(`[data-pos="${calc.pos}"]`):null;
 }
+const CALC_OPS='+−×÷';
+const calcFmt=v=>String(Math.round(v*1e9)/1e9).replace('.',',');
+// Evaluasi ekspresi tanpa eval(): × dan ÷ didahulukan dari + dan −.
+function calcEvalExpr(src){
+ const s=String(src||'').replace(/[+−×÷,]+$/,'');
+ if(!s)return {ok:false,empty:true};
+ const toks=s.match(/\d+(?:,\d+)?|[+−×÷]/g)||[];
+ if(toks.join('')!==s)return {ok:false,err:'Format tidak sah'};
+ let p=0;
+ const num=()=>{const t=toks[p++];if(t===undefined||!/^\d/.test(t))throw new Error('Format tidak sah');return Number(t.replace(',','.'))};
+ const term=()=>{let v=num();while(toks[p]==='×'||toks[p]==='÷'){const op=toks[p++];const r=num();if(op==='÷'){if(r===0)throw new Error('Tidak bisa dibagi 0');v/=r}else v*=r}return v};
+ const expr=()=>{let v=term();while(toks[p]==='+'||toks[p]==='−'){const op=toks[p++];const r=term();v=op==='+'?v+r:v-r}return v};
+ try{
+  const v=expr();
+  if(p!==toks.length)throw new Error('Format tidak sah');
+  if(!isFinite(v)||Math.abs(v)>1e12)throw new Error('Hasil terlalu besar');
+  return {ok:true,v};
+ }catch(e){return {ok:false,err:e.message}}
+}
+// Satu penekanan tombol kalkulator (layar, bukan langsung ke posisi).
+function calcPress(k){
+ if(!calc)return;
+ let e=calc.expr;
+ const isNum=/^\d$/.test(k)||k==='00'||k===',';
+ if(calc.eq&&isNum)e='';
+ calc.eq=false;
+ if(k==='AC'){e='';calc.prev=''}
+ else if(k==='⌫')e=e.slice(0,-1);
+ else if(k==='%')e=e.replace(/\d+(?:,\d+)?$/,m=>calcFmt(Number(m.replace(',','.'))/100));
+ else if(k==='='){const r=calcEvalExpr(e);if(r.ok){calc.prev=e;e=calcFmt(r.v);calc.eq=true}}
+ else if(isNum){
+  if(e.length>=30)return;
+  const lone=/(^|[+−×÷])0$/.test(e);
+  if(k===','){const tail=(e.match(/[^+−×÷]*$/)||[''])[0];if(!tail.includes(','))e+=(e===''||CALC_OPS.includes(e.slice(-1)))?'0,':','}
+  else if(k==='00'){if(e!==''&&!lone)e+='00'}
+  else if(lone)e=e.slice(0,-1)+k;
+  else e+=k;
+ }
+ else if(CALC_OPS.includes(k)&&e!==''){
+  e=e.replace(/,$/,'');
+  e=CALC_OPS.includes(e.slice(-1))?e.slice(0,-1)+k:e+k;
+ }
+ calc.expr=e;
+}
 function drawCalc(){
  let ov=document.getElementById('calcOv');
  if(!calc){ov?.remove();return}
- const cur=calc.input.value===''?0:Number(calc.input.value);
- const keys=['7','8','9','4','5','6','1','2','3','00','0','⌫'];
- const html=`<div class="calc-box" role="dialog" aria-label="Kalkulator">
-  <div class="calc-head"><b>Kalkulator · ${escapeHTML(calc.label)}</b><button class="x" data-act="calc-close" title="Tutup">×</button></div>
-  <div class="calc-disp"><small>Posisi saat ini</small><b>${n(cur)}</b></div>
-  <div class="calc-disp input-disp"><small>Angka input</small><b>${calc.typed===''?'0':escapeHTML(calc.typed)}</b></div>
-  <div class="keypad">${keys.map(k=>`<button class="key" data-act="calc-key" data-k="${k}">${k}</button>`).join('')}<button class="key warn" data-act="calc-key" data-k="C">C</button></div>
-  <div class="calc-actions"><button class="btn primary" data-act="calc-apply" data-op="add">+ Tambah</button><button class="btn danger" data-act="calc-apply" data-op="sub">− Kurangi</button><button class="btn outline" data-act="calc-apply" data-op="mul">× Kali</button><button class="btn outline" data-act="calc-apply" data-op="set">= Ganti</button></div>
+ const live=calcLiveInput();
+ const cur=live&&live.value!==''?Number(live.value):0;
+ const r=calcEvalExpr(calc.expr);
+ const resTxt=r.empty?'':r.ok?calcFmt(r.v):r.err;
+ const keys=[['AC','fn'],['%','fn'],['⌫','fn'],['÷','op'],['7',''],['8',''],['9',''],['×','op'],['4',''],['5',''],['6',''],['−','op'],['1',''],['2',''],['3',''],['+','op'],['00',''],['0',''],[',',''],['=','eq']];
+ const html=`<div class="calc-box xcalc" role="dialog" aria-label="Kalkulator">
+  <div class="xcalc-top"><span>Kalkulator · ${escapeHTML(calc.label)}</span><button class="xclose" data-act="calc-close" title="Tutup">×</button></div>
+  <div class="xcalc-pos">Posisi saat ini: <b>${n(cur)}</b></div>
+  <div class="xcalc-screen">
+   <div class="xcalc-prev">${escapeHTML(calc.prev?calc.prev+' =':'')}</div>
+   <div class="xcalc-expr" id="calcExpr">${escapeHTML(calc.expr||'0')}</div>
+   <div class="xcalc-res${r.ok||r.empty?'':' err'}">${escapeHTML(resTxt)}</div>
+  </div>
+  <div class="xkeys">${keys.map(([k,c])=>`<button class="xk ${c}" data-act="calc-key" data-k="${k}">${k}</button>`).join('')}</div>
+  <div class="xact">
+   <button class="xa pos" data-act="calc-apply" data-op="add">+ Tambah</button>
+   <button class="xa neg" data-act="calc-apply" data-op="sub">− Kurangi</button>
+   <button class="xa" data-act="calc-apply" data-op="mul">× Kali</button>
+   <button class="xa" data-act="calc-apply" data-op="set">= Ganti</button>
+  </div>
   ${calcHistHTML()}
-  <p class="small muted">Setiap Tambah/Kurangi langsung masuk ke posisi. Kalkulator tetap terbuka untuk input berikutnya.</p>
+  <p class="small muted">Hasil ekspresi dipakai saat menekan Tambah, Kurangi, Kali, atau Ganti. Keyboard juga bisa dipakai.</p>
  </div>`;
  if(!ov){ov=document.createElement('div');ov.id='calcOv';ov.className='calc-bg';document.body.appendChild(ov)}
  ov.innerHTML=html;
+ const ex=document.getElementById('calcExpr');if(ex)ex.scrollLeft=ex.scrollWidth;
 }
 ACT['calc-open']=async el=>{
  const wrap=el.closest('.pos-wrap,.qty-wrap');const input=wrap?.querySelector('input');if(!input||input.disabled)return;
  const tr=el.closest('tr');openCalc(input,(tr?.dataset.sku?tr.dataset.sku+' · ':'')+(el.dataset.label||'Qty'));
 };
-ACT['calc-key']=async el=>{
- if(!calc)return;const k=el.dataset.k;
- if(k==='C')calc.typed='';
- else if(k==='⌫')calc.typed=calc.typed.slice(0,-1);
- else{const next=(calc.typed+k).replace(/^0+(?=\d)/,'');if(next.length<=9)calc.typed=next}
- drawCalc();
-};
+ACT['calc-key']=async el=>{calcPress(el.dataset.k);drawCalc()};
 ACT['calc-apply']=async el=>{
  if(!calc)return;const op=el.dataset.op;
- if(calc.typed===''&&op!=='set')throw Error('Isi angka terlebih dahulu.');
+ const r=calcEvalExpr(calc.expr);
+ if(!r.ok&&!r.empty)throw Error(r.err||'Ekspresi belum valid.');
+ if(r.empty&&op!=='set')throw Error('Isi angka terlebih dahulu.');
+ const amt=r.empty?0:Math.round(r.v);
+ if(amt<0)throw Error('Hasil negatif tidak bisa dipakai.');
  const live=calcLiveInput();
  if(!live)throw Error('Baris tidak ditemukan. Tutup kalkulator lalu coba lagi.');
- const amt=Number(calc.typed||0);
  const cur=live.value===''?0:Number(live.value);
  const next=op==='add'?cur+amt:op==='sub'?Math.max(0,cur-amt):op==='mul'?cur*amt:amt;
  if(next>999999999)throw Error('Hasil terlalu besar.');
@@ -1157,11 +1211,21 @@ ACT['calc-apply']=async el=>{
  // Total baris langsung diperbarui, lalu disimpan lewat antrean.
  const tr=live.closest('tr[data-sku]');
  if(tr){const t=POS.reduce((a,[k])=>a+Number(tr.querySelector(`[data-pos="${k}"]`).value||0),0);tr.querySelector('.total').textContent=n(t)}
- calc.typed='';drawCalc();
+ calc.expr='';calc.prev='';calc.eq=false;drawCalc();
  if(tr)await saveRowQ(tr);
 };
 ACT['calc-close']=async()=>{calc=null;drawCalc()};
-document.addEventListener('keydown',e=>{if(e.key==='Escape'&&calc){calc=null;drawCalc()}});
+const CALC_KEYMAP={'Enter':'=','=':'=','Backspace':'⌫','Delete':'AC','*':'×','x':'×','/':'÷','-':'−','+':'+',',':',','.':',','%':'%'};
+document.addEventListener('keydown',e=>{
+ if(!calc)return;
+ if(e.key==='Escape'){calc=null;drawCalc();return}
+ const t=e.target;
+ if(t instanceof Element&&t.closest('input,textarea,select'))return;
+ if(t instanceof Element&&t.closest('button')&&(e.key==='Enter'||e.key===' '))return;
+ const k=/^\d$/.test(e.key)?e.key:CALC_KEYMAP[e.key];
+ if(!k)return;
+ e.preventDefault();calcPress(k);drawCalc();
+});
 
 /* ---------- Scanner barcode ---------- */
 let scanStream=null;

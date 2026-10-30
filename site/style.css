@@ -1213,3 +1213,34 @@ body{-webkit-font-smoothing:antialiased}
  .trow .tdelta{order:4;text-align:left}
 }
 .tfill.ok{background:#16a34a}.tfill.warn{background:#f59e0b}.tfill.bad{background:#dc2626}
+
+/* v18 kalkulator gaya kalkulator HP (Counting) */
+.calc-bg .xcalc{background:#000;color:#fff;border-radius:30px;padding:14px 14px 16px;width:min(360px,100%);gap:12px;box-shadow:0 24px 60px rgba(0,0,0,.45);max-height:calc(100vh - 24px);overflow:auto}
+.xcalc .xcalc-top{display:flex;justify-content:space-between;align-items:center;gap:8px;color:#a1a1a6;font-size:13px;font-weight:600}
+.xcalc .xcalc-top span{overflow-wrap:anywhere}
+.xcalc .xclose{background:none;border:0;color:#fff;font-size:26px;line-height:1;cursor:pointer;padding:0 4px;flex:none}
+.xcalc .xcalc-pos{font-size:12px;color:#8e8e93}
+.xcalc .xcalc-pos b{color:#ff9f0a;font-variant-numeric:tabular-nums}
+.xcalc .xcalc-screen{min-height:140px;display:flex;flex-direction:column;justify-content:flex-end;padding:4px 6px 2px;gap:4px}
+.xcalc .xcalc-prev{color:#8e8e93;font-size:15px;text-align:right;white-space:nowrap;overflow:hidden;min-height:18px}
+.xcalc .xcalc-expr{font-size:44px;line-height:1.15;text-align:right;white-space:nowrap;overflow:hidden;font-variant-numeric:tabular-nums;color:#fff}
+.xcalc .xcalc-res{font-size:28px;color:#8e8e93;text-align:right;min-height:34px;white-space:nowrap;overflow:hidden;font-variant-numeric:tabular-nums}
+.xcalc .xcalc-res.err{color:#ff453a;font-size:15px}
+.xcalc .xkeys{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.xcalc .xk{width:100%;aspect-ratio:1;border:0;border-radius:50%;background:#333;color:#fff;font-size:26px;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;-webkit-tap-highlight-color:transparent;user-select:none}
+.xcalc .xk:active{filter:brightness(1.45)}
+.xcalc .xk.fn,.xcalc .xk.op{background:#5b5b5b}
+.xcalc .xk.op{font-size:30px}
+.xcalc .xk.eq{background:#ff9500}
+.xcalc .xact{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.xcalc .xa{border:0;border-radius:14px;background:#1c1c1e;color:#fff;padding:11px 6px;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer}
+.xcalc .xa:hover{background:#2c2c2e}
+.xcalc .xa.pos{color:#30d158}
+.xcalc .xa.neg{color:#ff453a}
+.xcalc .calc-hist{border-top:1px solid rgba(255,255,255,.12);color:#e5e5ea;margin-top:0;padding-top:10px}
+.xcalc .calc-hist-head b{color:#fff}
+.xcalc .calc-hist li{color:#e5e5ea}
+.xcalc .muted,.xcalc .calc-hist-head .muted{color:#8e8e93}
+.xcalc .calc-hist .btn.ghost{color:#ff9f0a}
+.xcalc > p.small{margin:0;font-size:11px;color:#8e8e93}
+@media (max-width:420px){.xcalc .xk{font-size:24px}.xcalc .xcalc-expr{font-size:38px}}
