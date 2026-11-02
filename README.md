@@ -70,3 +70,30 @@ supabase/migrations/202610260001_tsi_so_schema.sql  Tabel, role RPC, keamanan, s
 CONTOH_INVENTORY.csv  Data contoh (bukan stok aktual)
 README.md           Instruksi ini
 ```
+
+
+## Update BA — kolom Alasan per SKU (2026-11-02)
+
+Basis source: arsip commit `2c53afbd02b5147e195023548606aaebf8fb8305`.
+
+1. Di Supabase **SQL Editor**, jalankan **hanya jika migrasi sebelumnya sudah terpasang**:
+   `supabase/migrations/202610280025_ba_alasan_per_sku.sql`.
+2. Deploy isi folder `site/` dengan mekanisme GitHub Pages yang sama seperti sebelumnya.
+   File `site/index.html` telah memperbarui versi cache `app.js` dan `style.css`.
+3. Buka **Berita Acara → Detail**. Di tabel SKU selisih akan terlihat kolom **Alasan**,
+   otomatis berasal dari `spv_note` (bila ada) atau `store_note` hasil counting.
+4. Sebelum tanda tangan SPV / sebelum HTML diekspor, SPV atau admin dapat memperbarui
+   alasan langsung per SKU. Simpan otomatis ketika pindah kolom (blur).
+5. Sesudah tanda tangan SPV atau ekspor HTML, alasan BA tidak dapat dikoreksi.
+   Perubahan disimpan pada `tsi_so_ba.reason_overrides` dan perubahannya dicatat di audit.
+6. **Unduh HTML** BA tunggal/gabungan dan **Cetak / PDF** menyertakan alasan untuk
+   masing-masing SKU selisih. CSV Adjust Moka tidak diubah.
+7. Setelah BA **dibersihkan**, `reason_overrides` dihapus sebagai bagian dari proses cleanup.
+
+**Catatan:** kode ini belum diuji terhadap Supabase produksi; cek migrasi dan data
+melalui akun SPV dan admin di lingkungan uji terlebih dahulu. Jangan menjalankan
+migrasi ulang yang lebih lama setelah migration 025, karena fungsi BA yang lama dapat
+menimpa perubahan ini.
+
+Smoke test lokal: `node --check --input-type=module < site/app.js`,
+`node tests/test_csv.cjs`, dan `node tests/test_ba_reason.cjs`.

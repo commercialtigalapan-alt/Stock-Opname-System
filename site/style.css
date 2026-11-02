@@ -1244,3 +1244,13 @@ body{-webkit-font-smoothing:antialiased}
 .xcalc .calc-hist .btn.ghost{color:#ff9f0a}
 .xcalc > p.small{margin:0;font-size:11px;color:#8e8e93}
 @media (max-width:420px){.xcalc .xk{font-size:24px}.xcalc .xcalc-expr{font-size:38px}}
+
+/* ===== BA: alasan per SKU (editable sebelum disahkan SPV) ===== */
+.ba-reason-cell{min-width:210px;max-width:320px;white-space:normal;overflow-wrap:anywhere;font-size:12px;vertical-align:top}
+.ba-reason-editor{width:100%;min-width:190px;min-height:58px;resize:vertical;box-sizing:border-box;font:inherit;line-height:1.4}
+.ba-reason-print{display:none;white-space:pre-wrap}
+.ba-reason-static{white-space:pre-wrap}
+@media print{
+ .ba-reason-print{display:inline!important}
+ .ba-reason-cell{min-width:0;max-width:none}
+}

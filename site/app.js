@@ -27,7 +27,7 @@ const $=sel=>document.querySelector(sel);
 const $$=sel=>Array.from(document.querySelectorAll(sel));
 const toast=(s,isErr=false)=>{const el=$('#toast');el.textContent=s;el.className='toast'+(isErr?' error':'');clearTimeout(el._t);el._t=setTimeout(()=>el.classList.add('hidden'),5500)};
 const busy=d=>{inflight=Math.max(0,inflight+d);const p=$('#progress');if(p)p.classList.toggle('on',inflight>0)};
-const SYNC_RPCS=new Set(['upload','start','start_cycle','submit','approve','recount','validate_edit','validate_line','schedule_create','schedule_update','schedule_delete','archive_cycles','hard_delete','unlock','ba_sign','ba_sign_bulk','ba_adjust','ba_adjust_bulk','ba_clean','assign_user','set_store_spv','set_store_area','rounds_resync','activate_user']);
+const SYNC_RPCS=new Set(['upload','start','start_cycle','submit','approve','recount','validate_edit','validate_line','schedule_create','schedule_update','schedule_delete','archive_cycles','hard_delete','unlock','ba_sign','ba_sign_bulk','ba_reason_set','ba_adjust','ba_adjust_bulk','ba_clean','assign_user','set_store_spv','set_store_area','rounds_resync','activate_user']);
 const rpc=async(name,args={})=>{busy(1);try{const {data,error}=await sb.rpc('tsi_so_'+name,args);if(error){if(!error.code)state.online=false;throw new Error(error.message||'Terjadi kesalahan server')}state.online=true;if(SYNC_RPCS.has(name))notifySync(name,args.p_store||null);return data}finally{busy(-1)}};
 const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 const isoUTC=d=>d.toISOString().slice(0,10);
@@ -1804,7 +1804,7 @@ function baTableHTML(g,b,allOn){return `<div class="tablewrap"><table><thead><tr
    <td>${btn('Detail','ba-open','ghost sm',{id:x.id})}</td></tr>`).join('')}
   </tbody></table></div>`;
 }
-function baArticle(h,s,lines,total,full){
+function baArticle(h,s,lines,total,full,editReasons=false){
  const stamp=(at,name,empty)=>at?`<b>${escapeHTML(name||'')}</b><small>Ditandatangani secara elektronik · ${fmtDT(at)}</small>`:`<i class="muted">${empty}</i>`;
  return `<article class="ba-doc" id="${full?'':'baPrint'}">
   <header class="ba-head"><img src="logo.png" alt=""/><div><h2>BERITA ACARA STOCK OPNAME</h2><p class="mono">${escapeHTML(h.ba_no)}</p></div></header>
@@ -1817,8 +1817,8 @@ function baArticle(h,s,lines,total,full){
    <tr><td>Nilai kekurangan</td><td class="num">${rp(s.missing_value)}</td><td>Nilai kelebihan</td><td class="num">${rp(s.surplus_value)}</td></tr>
   </tbody></table>
   ${total?`<p class="ba-text">Daftar SKU selisih${!full&&lines.length<total?` (menampilkan ${n(lines.length)} dari ${n(total)} SKU, urut selisih terbesar; unduh untuk daftar lengkap)`:''}:</p>
-  <div class="tablewrap ba-lines"><table><thead><tr><th>SKU</th><th>Nama item</th><th class="num">System</th><th class="num">Actual</th><th class="num">Selisih</th><th class="num">Nilai selisih</th></tr></thead><tbody>
-  ${lines.map(l=>`<tr><td class="mono">${escapeHTML(l.sku)}</td><td>${escapeHTML(l.item_name)}</td><td class="num">${n(l.system_qty)}</td><td class="num">${n(l.actual_qty)}</td><td class="num">${signed(l.diff_qty)}</td><td class="num">${rp(l.diff_qty*l.unit_cost,true)}</td></tr>`).join('')}
+  <div class="tablewrap ba-lines"><table><thead><tr><th>SKU</th><th>Nama item</th><th class="num">System</th><th class="num">Actual</th><th class="num">Selisih</th><th class="num">Nilai selisih</th><th>Alasan</th></tr></thead><tbody>
+  ${lines.map(l=>`<tr><td class="mono">${escapeHTML(l.sku)}</td><td>${escapeHTML(l.item_name)}</td><td class="num">${n(l.system_qty)}</td><td class="num">${n(l.actual_qty)}</td><td class="num">${signed(l.diff_qty)}</td><td class="num">${rp(l.diff_qty*l.unit_cost,true)}</td><td class="ba-reason-cell">${editReasons?`<textarea class="input ba-reason-editor no-print" data-change="ba-reason" data-sku="${escapeHTML(l.sku)}" data-saved="${escapeHTML(l.reason||'')}" maxlength="500" rows="2" placeholder="Alasan wajib diisi">${escapeHTML(l.reason||'')}</textarea><span class="ba-reason-print">${escapeHTML(l.reason||'')}</span>`:`<span class="ba-reason-static">${escapeHTML(l.reason||'—')}</span>`}</td></tr>`).join('')}
   </tbody></table></div>`:'<p class="ba-text">Tidak ada selisih. Seluruh SKU sesuai dengan sistem.</p>'}
   <div class="ba-sign">
    <div><span>SPV Toko</span><div class="ba-stamp">${stamp(h.spv_at,h.spv_name,'Belum ditandatangani')}</div></div>
@@ -1832,6 +1832,7 @@ async function loadBADetail(){
  const d=await rpc('ba_get',{p_ba:b.open});
  const h=d.header,s=d.summary||{},lines=d.lines||[],total=s.variance_count||0,role=state.me.role;
  const canSpv=!h.spv_at&&(role==='spv'||role==='admin');
+ const canEditReason=canSpv&&!h.exported_at;
  const canMgr=!h.mgr_at&&!!h.spv_at&&role==='admin';
  const stamp=(at,name,empty)=>at?`<b>${escapeHTML(name||'')}</b><small>Ditandatangani secara elektronik · ${fmtDT(at)}</small>`:`<i class="muted">${empty}</i>`;
  $('#content').innerHTML=`<div class="crumb no-print"><button class="btn ghost" data-act="ba-back">← Daftar BA</button></div>
@@ -1839,17 +1840,47 @@ async function loadBADetail(){
   <div class="row"><b class="mono">${escapeHTML(h.ba_no)}</b>${h.adj_at?chip('TALLY','Sudah di-adjust'):chip('SUBMITTED',h.mgr_at?'Siap di-adjust':(h.spv_at?'Menunggu Manager':'Menunggu SPV'))}</div>
   <div class="row">${canSpv?btn('Tanda tangan SPV','ba-sign','primary',{id:h.id,level:'SPV'}):''}${canMgr?btn('Setujui Manager','ba-sign','dark',{id:h.id,level:'MGR'}):''}${h.mgr_at?btn('Export CSV Adjust','ba-adj-csv','dark'):''}${btn('Unduh HTML','ba-download','ghost')}${btn('Cetak / PDF','ba-print','ghost')}</div>
  </div>
- ${baArticle(h,s,lines,total,false)}`;
+ ${canEditReason?'<div class="note info no-print">Kolom Alasan dapat dikoreksi per SKU sebelum tanda tangan SPV. Perubahan tersimpan otomatis setelah kolom ditinggalkan.</div>':''}
+ ${baArticle(h,s,lines,total,false,canEditReason)}`;
 }
 ACT['ba-open']=async el=>{baState().open=el.dataset.id;await render()};
-ACT['ba-back']=async()=>{baState().open=null;await render()};
+ACT['ba-back']=async()=>{await baFlushReasons();baState().open=null;await render()};
 ACT['ba-filter']=async el=>{baState().status=el.dataset.k;await render()};
-ACT['ba-print']=async()=>window.print();
+// Tuntaskan penyimpanan alasan sebelum tanda tangan, cetak atau ekspor.
+const baReasonPending=new Set();
+async function baFlushReasons(){
+ const active=document.activeElement;
+ if(active?.matches?.('.ba-reason-editor'))active.blur();
+ await Promise.all([...baReasonPending]);
+}
+ACT['ba-print']=async()=>{await baFlushReasons();window.print()};
+// Alasan adalah catatan per SKU pada BA. Otomatis mengambil hasil validasi
+// bila belum pernah dikoreksi; koreksi hanya sebelum tanda tangan SPV.
+CHG['ba-reason']=el=>{
+ const reason=el.value.trim();
+ const previous=el.dataset.saved||'';
+ if(reason===previous)return;
+ if(!reason){el.value=previous;throw Error('Alasan SKU selisih wajib diisi.');}
+ if(reason.length>500){el.value=previous;throw Error('Alasan maksimal 500 karakter.');}
+ const task=(async()=>{
+  try{
+   await rpc('ba_reason_set',{p_ba:baState().open,p_sku:el.dataset.sku,p_reason:reason});
+   el.dataset.saved=reason;
+   el.value=reason;
+   const printable=el.closest('td')?.querySelector('.ba-reason-print');
+   if(printable)printable.textContent=reason;
+   toast('Alasan tersimpan untuk SKU '+el.dataset.sku);
+  }catch(err){el.value=previous;throw err;}
+ })();
+ baReasonPending.add(task);
+ return task.finally(()=>baReasonPending.delete(task));
+};
 // Unduh BA (lengkap, semua SKU selisih) sebagai satu file HTML. Dibuat di browser, tidak disimpan di server.
 async function baDownload(ids){
+ await baFlushReasons();
  if(!ids.length){toast('Pilih BA dulu.',true);return}
  const docs=await rpc('ba_export',{p_bas:ids});
- const css='body{font-family:system-ui,Arial,sans-serif;color:#111;margin:24px;font-size:12.5px}table{width:100%;border-collapse:collapse}td,th{padding:5px 8px;border:1px solid #d1d5db;text-align:left}th{background:#f5f3ff}.num{text-align:right}.mono{font-family:monospace}.ba-head{display:flex;align-items:center;gap:14px;border-bottom:2px solid #111;padding-bottom:12px}.ba-head h2{margin:0;font-size:18px}.ba-meta td{border:0}.ba-sum td{border-color:#999}.ba-sign{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:22px}.ba-sign>div{border:1px solid #d1d5db;border-radius:8px;padding:12px;min-height:90px}.ba-stamp{margin-top:8px;display:grid;gap:2px}.ba-stamp small{color:#6b7280}.ba-text{margin:10px 0}.ba-adjnote{color:#065f46}.ba-doc{border:0;padding:0;max-width:none}.ba-page{break-after:page;margin-bottom:24px}.ba-page:last-child{break-after:auto}tr{break-inside:avoid}';
+ const css='body{font-family:system-ui,Arial,sans-serif;color:#111;margin:24px;font-size:12.5px}table{width:100%;border-collapse:collapse}td,th{padding:5px 8px;border:1px solid #d1d5db;text-align:left}th{background:#f5f3ff}.num{text-align:right}.mono{font-family:monospace}.ba-head{display:flex;align-items:center;gap:14px;border-bottom:2px solid #111;padding-bottom:12px}.ba-head h2{margin:0;font-size:18px}.ba-meta td{border:0}.ba-sum td{border-color:#999}.ba-sign{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:22px}.ba-sign>div{border:1px solid #d1d5db;border-radius:8px;padding:12px;min-height:90px}.ba-stamp{margin-top:8px;display:grid;gap:2px}.ba-stamp small{color:#6b7280}.ba-text{margin:10px 0}.ba-adjnote{color:#065f46}.ba-doc{border:0;padding:0;max-width:none}.ba-reason-cell{min-width:160px;max-width:260px;overflow-wrap:anywhere;white-space:pre-wrap}.ba-page{break-after:page;margin-bottom:24px}.ba-page:last-child{break-after:auto}tr{break-inside:avoid}';
  const body=docs.map(d=>`<section class="ba-page">${baArticle(d.header,d.summary,d.lines,d.summary.variance_count||0,true).replace(/<img[^>]*>/,'')}</section>`).join('');
  const title=docs.length===1?docs[0].header.ba_no:`BA gabungan ${docs.length} BA`;
  const html=`<!doctype html><html lang="id"><head><meta charset="utf-8"/><title>${escapeHTML(title)}</title><style>${css}</style></head><body>${body}</body></html>`;
@@ -1878,6 +1909,7 @@ function baSaveFile(text,fname,type){
  setTimeout(()=>URL.revokeObjectURL(u),2000);
 }
 async function baAdjCsv(ids){
+ await baFlushReasons();
  if(!ids.length){toast('Tidak ada BA yang sudah disetujui Manager pada pilihan ini.',true);return}
  const docs=await rpc('ba_export',{p_bas:ids});
  const rowsN=docs.reduce((t,d)=>t+d.lines.length,0);
@@ -1894,6 +1926,7 @@ async function baMark(ids,done){
 ACT['ba-download']=async()=>{await baDownload([baState().open]);await render()};
 // Satu pintu untuk semua aksi massal. Cakupan: BA yang dicentang, atau semua BA di filter bila tidak ada centang.
 ACT['ba-run']=async el=>{
+ await baFlushReasons();
  const b=baState();const k=el.dataset.do;
  const picked=(b.all||[]).filter(x=>b.sel.has(x.id));
  const scope=picked;
@@ -1930,7 +1963,7 @@ CHG['ba-pick-all']=async el=>{const b=baState();b.sel=b.sel||new Set();baFiltere
 CHG['ba-store']=async el=>{const b=baState();b.store=el.value;await render()};
 
 ACT['ba-create']=async el=>{const r=await rpc('ba_create',{p_cycle:el.dataset.id});toast(r.existed?`BA sudah ada: ${r.ba_no}`:`BA dibuat: ${r.ba_no}`);const b=baState();b.open=r.id;state.validation.open=false;state.page='ba';await render()};
-ACT['ba-sign']=async el=>{const lv=el.dataset.level;if(!confirm(lv==='SPV'?'Tanda tangani BA ini sebagai SPV? Nama dan waktu Anda akan tercatat.':'Setujui BA ini sebagai Manager? Nama dan waktu Anda akan tercatat.'))return;await rpc('ba_sign',{p_ba:el.dataset.id,p_level:lv});toast('BA berhasil ditandatangani.');await render()};
+ACT['ba-sign']=async el=>{await baFlushReasons();const lv=el.dataset.level;if(!confirm(lv==='SPV'?'Tanda tangani BA ini sebagai SPV? Nama dan waktu Anda akan tercatat.':'Setujui BA ini sebagai Manager? Nama dan waktu Anda akan tercatat.'))return;await rpc('ba_sign',{p_ba:el.dataset.id,p_level:lv});toast('BA berhasil ditandatangani.');await render()};
 CHG['ba-adj']=async el=>{await rpc('ba_adjust',{p_ba:el.dataset.id,p_done:el.checked});toast(el.checked?'BA ditandai sudah di-adjust.':'Tanda adjust dibatalkan.');await render()};
 
 // ===== Ganti password (akun sendiri) dan kirim link reset (Admin) =====
