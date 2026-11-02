@@ -148,3 +148,12 @@ from public.tsi_so_ba_sku_revision order by corrected_at desc limit 100;
 - SKU ditampilkan sebagai kode resmi; jika data lama masih memakai Item Name sebagai SKU, kolom diberi penanda **Belum ada SKU**, bukan menampilkan nama item sebagai kode. Tidak ada perubahan pada key SKU yang dipakai untuk perhitungan dan penyimpanan.
 - Pembagian lebar tabel menggunakan persentase dan minimal width yang sesuai input kalkulator Counting; pada tablet/HP scroll horizontal di dalam tabel untuk menghindari teks bertumpuk.
 - **Tidak ada migrasi SQL untuk perubahan layout.** Migrasi 027 yang disertakan adalah untuk koreksi SKU BA historis yang sebelumnya diminta. Urutan migrasi: 025 → 026 → 027.
+
+
+## Update layout Counting & Validasi (2026-11-02, v30)
+
+- Kolom SKU, Nama Item, input posisi, Total, Alasan, Status dibuat proporsional memakai `<colgroup>` agar jumlah lebarnya tepat 100%.
+- Pada desktop dengan lebar aplikasi cukup (sekitar 1280 px layar saat sidebar terbuka), seluruh kolom Counting sampai Status terlihat tanpa scroll ke samping.
+- Pada perangkat sempit, hanya tabel yang dapat digeser horizontal; fungsi kalkulator, input, dan status tidak diubah.
+- Cache CSS/JS di `site/index.html` dinaikkan ke `20261102-fit-count-v030`. Setelah deploy, lakukan hard refresh bila perlu.
+- Pembaruan ini hanya frontend; tidak perlu menjalankan migrasi Supabase baru.

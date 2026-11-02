@@ -17,6 +17,9 @@ assert(!html.includes('SKU: B01-108A02'));assert((html.match(/<td/g)||[]).length
 const missing=vm.runInNewContext('skuTableCell('+JSON.stringify({...product,sku:product.name})+')',ctx);
 assert(missing.includes('Belum ada SKU'));
 assert(js.includes('<td colspan="10" class="empty">Tidak ada SKU.</td>'));
-assert(css.includes('#countTable{min-width:1350px}'));
-assert(css.includes('#valTable{min-width:1260px}'));
+assert(css.includes('#countTable{min-width:960px}'));
+assert(css.includes('#valTable{min-width:960px}'));
 console.log('SKU columns Counting & Validasi SPV: PASS');
+
+assert(countHead.includes('<colgroup>') && valHead.includes('<colgroup>'));
+assert(css.includes('#countTable col.c-status{width:11.3%}'));
