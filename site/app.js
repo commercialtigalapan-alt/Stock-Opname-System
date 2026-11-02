@@ -494,13 +494,13 @@ function importRows(csv){
  const parsed=parseCSV(csv);const headers=parsed.shift().map(normHead);
  const index=names=>names.map(normHead).map(v=>headers.indexOf(v)).find(i=>i>=0)??-1;
  const cSku=index(['SKU','Item SKU','Kode SKU','Kode Item']);const cName=index(['NAME_VARIANT','Name - Variant','Name Variant','Item Name','Nama Item']);const cEnd=index(['ENDING','Ending Inventory','Qty','Stok Akhir']);const cCat=index(['CATEGORY','Category Name','Category']);const cRetail=index(['Harga Retail','Retail Price','Harga_Retail','RETAIL']);const cCost=index(['COST','HPP','Unit Cost','Unit_Cost']);
- if(cName<0||cEnd<0)throw Error('Header CSV harus memuat Name - Variant (atau NAME_VARIANT) dan Ending.');
+ if(cName<0||cEnd<0)throw Error('Header CSV harus memuat Name - Variant (atau NAME_VARIANT) dan Ending. SKU boleh kosong hanya jika tersedia pada Item Library di database.');
  const body=parsed.filter(v=>!(v[cEnd]||'').trim().startsWith('-'));
  if(body.length>10000)throw Error('Maksimal 10.000 SKU per upload.');
  const seen=new Set();
- const out=body.map((v,i)=>{const rawSku=cSku>=0?(v[cSku]||''):(v[cName]||'');const sku=rawSku.trim().toUpperCase(),name=(v[cName]||'').trim(),ending=(v[cEnd]||'').trim(),cost=cCost>=0?(v[cCost]||'0').trim():'0',retail=cRetail>=0?((v[cRetail]||'').trim()||'0'):'0';
-  if(!sku||!name||!/^\d+$/.test(ending)||!/^\d+(\.\d{1,2})?$/.test(cost)||!/^\d+(\.\d{1,2})?$/.test(retail))throw Error(`Baris ${i+2} tidak valid: SKU/nama/Ending/Cost.`);
-  if(seen.has(sku))throw Error('SKU duplikat: '+sku);seen.add(sku);
+ const out=body.map((v,i)=>{const rawSku=cSku>=0?(v[cSku]||''):'';const sku=rawSku.trim().toUpperCase(),name=(v[cName]||'').trim(),ending=(v[cEnd]||'').trim(),cost=cCost>=0?(v[cCost]||'0').trim():'0',retail=cRetail>=0?((v[cRetail]||'').trim()||'0'):'0';
+  if(!name||!/^\d+$/.test(ending)||!/^\d+(\.\d{1,2})?$/.test(cost)||!/^\d+(\.\d{1,2})?$/.test(retail))throw Error(`Baris ${i+2} tidak valid: SKU/nama/Ending/Cost.`);
+  const key=sku||'#NAME:'+name.toUpperCase();if(seen.has(key))throw Error('SKU / nama duplikat: '+(sku||name));seen.add(key);
   return{sku,name,category:cCat>=0?(v[cCat]||'').trim():'',ending:Number(ending),cost:Number(cost),retail:Number(retail)};});
  out.skipped=parsed.length-body.length;return out;
 }
@@ -934,7 +934,7 @@ function uploadPanelHTML(s){
  return `<details class="card up-panel" id="upPanel" open><summary><b>⬆ Upload Inventory</b><span class="muted small">Ganti inventory aktif toko. SO yang sudah SUBMITTED tidak ikut berubah.</span></summary>
   <div class="up-body">
    ${canManage()?`<select class="input select" data-change="up-store">${storeOptions(state.store,false)}</select>`:`<span class="chip blue"><i></i>${escapeHTML(labelStore(state.store))}</span>`}
-   <label class="dropzone"><b>⬆ Pilih File CSV Inventory Summary</b><small>Name - Variant, Category, Ending. Kolom SKU, Cost, dan Harga Retail opsional.</small><input type="file" id="fileInput" accept=".csv,text/csv" data-change="file-pick"/></label>
+   <label class="dropzone"><b>⬆ Pilih File CSV Inventory Summary</b><small>Name - Variant, Category, Ending. SKU otomatis dari Item Library jika nama item cocok. Cost dan Harga Retail opsional.</small><input type="file" id="fileInput" accept=".csv,text/csv" data-change="file-pick"/></label>
    <div id="fileInfo" class="small muted">Belum ada file dipilih.</div>
    <div id="retailPreview"></div>
    <div class="row">${btn('Upload & Ganti Inventory','do-upload','primary')}</div>
@@ -976,7 +976,7 @@ function statusCell(status,reason){
 function countRowHTML(x,edit){
  const needsReason=x.status==='SELISIH'&&!(x.reason||'').trim();
  return `<tr data-sku="${escapeHTML(x.sku)}">
-  <td class="nm"><div class="nm-sub">${nameBadge(x.name,x.category)}${x.team?`<span class="team-tag">${escapeHTML(x.team)}</span>`:''}</div></td>
+  <td class="nm"><div class="nm-sub">${nameBadge(x.name,x.category)}<small class="mono muted sku-id">${String(x.sku||'').trim().toUpperCase()===String(x.name||'').trim().toUpperCase()?'SKU belum tersedia':'SKU: '+escapeHTML(x.sku)}</small>${x.team?`<span class="team-tag">${escapeHTML(x.team)}</span>`:''}</div></td>
   ${POS.map(([k,l])=>`<td><div class="pos-wrap"><input class="input count-num pos" data-change="count-row" data-pos="${k}" type="number" min="0" step="1" inputmode="numeric" aria-label="${l}" ${edit?'':'disabled'} value="${x[k]??''}"/>${edit?`<button class="calc-btn" data-act="calc-open" data-label="${escapeHTML(l)}" title="Kalkulator ${l}">🧮</button>`:''}</div></td>`).join('')}
   <td class="num total">${x.total==null?'—':n(x.total)}</td>
   <td><input class="input noteval ${needsReason?'needs-reason':''}" data-change="count-row" maxlength="500" placeholder="Alasan (wajib jika selisih)" ${edit?'':'disabled'} value="${escapeHTML(x.reason||'')}"/></td>
@@ -1305,7 +1305,7 @@ async function loadValidation(){
  const editable=st==='SUBMITTED';
  const noBA=st==='APPROVED'&&(sum.total_skus||0)>0&&sum.variance_skus===0&&sum.missing_skus===0;
  const rowHTML=x=>{const reason=x.spv_note||x.store_note||'';const delta=x.delta==null?'—':signed(x.delta);return `<tr data-sku="${escapeHTML(x.sku)}">
-   <td class="nm"><div class="nm-sub">${nameBadge(x.name,x.category)}${x.team?`<span class="team-tag">${escapeHTML(x.team)}</span>`:''}</div></td>
+   <td class="nm"><div class="nm-sub">${nameBadge(x.name,x.category)}<small class="mono muted sku-id">${String(x.sku||'').trim().toUpperCase()===String(x.name||'').trim().toUpperCase()?'SKU belum tersedia':'SKU: '+escapeHTML(x.sku)}</small>${x.team?`<span class="team-tag">${escapeHTML(x.team)}</span>`:''}</div></td>
    ${editable
      ?`<td class="num sys-cell"><input class="input count-num" data-change="val-field" data-f="system" type="number" min="0" step="1" inputmode="numeric" value="${x.system??''}"/></td>`
      :`<td class="num sys-cell">${n(x.system)}</td>`}
@@ -1441,7 +1441,7 @@ async function showUpload(){
   <div class="card-head"><div><h3>Upload Inventory</h3><p class="muted small">File CSV mengganti inventory aktif toko. Inventory tidak dikunci: system qty SO yang sedang berjalan (COUNTING/RECOUNT) ikut diperbarui. SO yang sudah SUBMITTED dikunci.</p></div>
    ${canManage()?`<select class="input select" data-change="up-store">${storeOptions(state.store,false)}</select>`:`<span class="chip blue"><i></i>${escapeHTML(labelStore(state.store))}</span>`}</div>
   <div class="note warning">Cost/HPP harus berasal dari sumber resmi agar Value Accuracy valid.</div>
-  <label class="dropzone"><b>⬆ Pilih File CSV Inventory Summary</b><small>Name - Variant, Category, Ending. Kolom SKU, Cost, dan Harga Retail opsional.</small><input type="file" id="fileInput" accept=".csv,text/csv" data-change="file-pick"/></label>
+  <label class="dropzone"><b>⬆ Pilih File CSV Inventory Summary</b><small>Name - Variant, Category, Ending. SKU otomatis dari Item Library jika nama item cocok. Cost dan Harga Retail opsional.</small><input type="file" id="fileInput" accept=".csv,text/csv" data-change="file-pick"/></label>
   <div id="fileInfo" class="small muted">Belum ada file dipilih.</div>
   <div id="retailPreview"></div>
   <div class="row">${btn('Upload & Ganti Inventory','do-upload','primary')}</div>
@@ -1455,21 +1455,21 @@ CHG['up-store']=async el=>{state.store=el.value;await refreshDashboard();await r
 CHG['file-pick']=async el=>{
  try{const file=el.files[0];if(!file)return;if(file.size>3*1024*1024)throw Error('File >3MB. Pecah atau rapikan file sebelum upload.');
   upRows=importRows(await file.text());renderRetailPreview(upRows);
-  if($('#fileInfo'))$('#fileInfo').textContent=`Siap upload: ${n(upRows.length)} SKU; contoh SKU ${upRows[0]?.sku}${upRows.skipped?`; ${n(upRows.skipped)} baris Ending negatif dilewati`:''}`;
+  if($('#fileInfo'))$('#fileInfo').textContent=`Siap upload: ${n(upRows.length)} item; SKU contoh ${upRows[0]?.sku||'dicocokkan di server'}${upRows.skipped?`; ${n(upRows.skipped)} baris Ending negatif dilewati`:''}`;
  }catch(ex){upRows=[];if($('#retailPreview'))$('#retailPreview').innerHTML='';if($('#fileInfo'))$('#fileInfo').textContent=ex.message;toast(ex.message,true)}
 };
 ACT['do-upload']=async()=>{
  if(!upRows.length)throw Error('Pilih CSV valid terlebih dahulu.');
  if(!confirm(`Ganti SEMUA inventory aktif ${labelStore(state.store)} dengan ${upRows.length} SKU?`))return;
  const out=await rpc('upload',{p_store:state.store,p_rows:upRows});
- toast(`Upload berhasil: ${n(out.sku_count)} SKU. ${n(out.synced_lines)} baris SO aktif diperbarui${out.locked_lines?`, ${n(out.locked_lines)} baris SO SUBMITTED dikunci`:''}.`);upRows=[];$('#upPanel')?.remove();await refreshDashboard();await render();
+ toast(`Upload berhasil: ${n(out.sku_count)} SKU (${n(out.sku_auto_from_library||0)} dicocokkan dari Item Library). ${n(out.synced_lines)} baris SO aktif diperbarui${out.locked_lines?`, ${n(out.locked_lines)} baris SO SUBMITTED dikunci`:''}.`);upRows=[];$('#upPanel')?.remove();await refreshDashboard();await render();
 };
 function renderRetailPreview(rows){
  const box=$('#retailPreview');if(!box)return;
  const zero=rows.filter(x=>x.retail===0).length;
  const cell=(l,v)=>`<div class="db-tile"><small>${l}</small><b>${v}</b></div>`;
  box.innerHTML=`<div class="db-grid">${cell('Item',n(rows.length))}${cell('Harga Retail 0',n(zero))}${cell('Dilewati (Ending negatif)',n(rows.skipped||0))}</div>
- <div class="tablewrap"><table><thead><tr><th>Item</th><th>Category</th><th class="num">Ending</th><th class="num">Harga Retail</th></tr></thead><tbody>${rows.slice(0,80).map(x=>`<tr><td>${escapeHTML(x.name)}</td><td>${escapeHTML(x.category)}</td><td class="num">${n(x.ending)}</td><td class="num">${n(x.retail)}</td></tr>`).join('')}</tbody></table></div>
+ <div class="tablewrap"><table><thead><tr><th>Item</th><th>SKU (file)</th><th>Category</th><th class="num">Ending</th><th class="num">Harga Retail</th></tr></thead><tbody>${rows.slice(0,80).map(x=>`<tr><td>${escapeHTML(x.name)}</td><td class="mono">${x.sku?escapeHTML(x.sku):'<span class="muted">Cocokkan Item Library</span>'}</td><td>${escapeHTML(x.category)}</td><td class="num">${n(x.ending)}</td><td class="num">${n(x.retail)}</td></tr>`).join('')}</tbody></table></div>
  <p class="small muted">Menampilkan 80 baris pertama dari ${n(rows.length)} item.</p>`;
 }
 async function loadUploadHistory(){

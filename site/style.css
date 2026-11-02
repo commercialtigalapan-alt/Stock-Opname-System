@@ -1263,3 +1263,6 @@ body{-webkit-font-smoothing:antialiased}
  .ba-lines table{min-width:0;width:100%;table-layout:fixed}
  .ba-lines th,.ba-lines td{padding:5px 5px}
 }
+
+/* SKU resmi di bawah nama item pada halaman Counting/Validasi */
+.sku-id{display:block;font-size:11px;white-space:normal;margin-top:3px;overflow-wrap:anywhere}

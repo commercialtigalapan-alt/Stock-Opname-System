@@ -106,3 +106,17 @@ Smoke test lokal: `node --check --input-type=module < site/app.js`,
 - Kolom SKU, System, Actual, Selisih (qty), dan Alasan tetap ada. Nilai uang pada ringkasan BA dan perhitungan dashboard **tidak berubah**.
 - Perubahan ini hanya pada `site/app.js`, `site/style.css`, dan cache pada `site/index.html`. **Tidak memerlukan migrasi SQL baru** (migrasi 025 tetap dibutuhkan jika belum dipasang).
 - Jalankan `node tests/test_ba_reason.cjs` dan `node tests/test_csv.cjs`; lalu publish folder `site/` seperti biasa.
+
+
+## Update SKU dari Item Library (2 November 2026) — migrasi 026
+
+Sumber: Item Library DC TIGALAPAN (7.295 baris). 6.052 mempunyai SKU resmi dan 1.243 belum memiliki SKU.
+
+- Kolom Item Name tetap nama produk; kolom SKU menggunakan kode resmi dari Item Library berdasarkan pencocokan nama *exact* (trim/case-insensitive).
+- SQL `supabase/migrations/202611020026_item_library_sku_mapping.sql` memuat mapping resmi dan memperbaiki key SKU pada inventory, detail SO yang **belum arsip/BA disahkan/diekspor**, cakupan/scope jadwal, alasan BA pada draft, dan data rasio per SKU. Semua qty/cost/reason asli dipertahankan.
+- BA yang sudah ditandatangani, diekspor, atau dibersihkan serta SO yang diarsipkan **tidak ditulis ulang** untuk menjaga arsip.
+- Setelah migrasi, upload inventory dengan kolom SKU kosong atau tanpa kolom SKU otomatis dicocokkan server berdasarkan Item Name. Jika item tidak cocok dan tidak mempunyai SKU eksplisit, upload akan **ditolak** agar nama item tidak digunakan kembali sebagai kode.
+- Kode resmi kosong **tidak dibuat-buat**. Lihat `Item_Library_Belum_Ada_SKU_1243.csv` pada berkas pendamping.
+- Migrasi harus diterapkan di proyek Supabase untuk mengubah data yang sudah tersimpan. Deploy frontend saja tidak akan memperbaiki data di database.
+- **Cadangkan database Supabase dulu**, jalankan migrasi 026 setelah 025, review hasil SELECT (hasil `*_converted`), lalu deploy site/. Transaksi akan rollback jika ada benturan SKU.
+- Catatan: tanpa akses database produksi, jumlah baris yang berhasil dicocokkan di database tidak dapat diketahui. Uji pada salinan database dulu.

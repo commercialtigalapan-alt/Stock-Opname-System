@@ -1,0 +1,12 @@
+const fs=require('fs'), assert=require('assert'), path=require('path');
+const p=path.join(__dirname,'../supabase/migrations/202611020026_item_library_sku_mapping.sql');
+const sql=fs.readFileSync(p,'utf8');
+const data=sql.split('-- Baris lama menggunakan nama item sebagai sku')[0];
+const count=(data.match(/^ \('/gm)||[]).length;
+assert.equal(count,6052,`Unexpected SKU map rows: ${count}`);
+assert(sql.includes("('JET BLACK 24S MAMU PDK S','JET BLACK 24S MAMU PDK S','B01-108A02'"));
+for(const check of ['_sku_inv','_sku_lines','_sku_rounds','reason_overrides','scope_skus','rounds_resync','lock table','SKU collision']) assert(sql.includes(check));
+const app=fs.readFileSync(path.join(__dirname,'../site/app.js'),'utf8');
+assert(app.includes("const rawSku=cSku>=0?(v[cSku]||''):''"));
+assert(app.includes('SKU: '+String.fromCharCode(36)+'{escapeHTML(x.sku)}')===false);
+console.log('SKU map tests: PASS (6052 official mappings, defensive migration, parser)');

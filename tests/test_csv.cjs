@@ -9,4 +9,8 @@ assert.equal(rows.length,2);assert.equal(rows[0].name,'Kaos, Navy');assert.equal
 rows=importRows('SKU;NAME_VARIANT;ENDING\nA1;Hitam;0\nB2;Putih;7');assert.equal(rows.length,2);assert.equal(rows[0].cost,0);
 assert.throws(()=>importRows('SKU,NAME_VARIANT,ENDING\nA,A,2\nA,B,3'),/duplikat/);
 const negative=importRows('SKU,NAME_VARIANT,ENDING\nA,A,-1');assert.equal(negative.length,0);assert.equal(negative.skipped,1);
+const csvWithoutSku=importRows('NAME_VARIANT;CATEGORY;ENDING\nJET BLACK 24S MAMU PDK S;24S MAMU;12');
+assert.equal(csvWithoutSku[0].sku,'');
+assert.equal(csvWithoutSku[0].name,'JET BLACK 24S MAMU PDK S');
+assert.throws(()=>importRows('NAME_VARIANT;ENDING\nA;1\nA;2'),/duplikat/);
 console.log('CSV parser tests: PASS (quoted field, semicolon, zero, duplicate, skipped negative rows)');
