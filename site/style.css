@@ -1355,7 +1355,14 @@ body{-webkit-font-smoothing:antialiased}
 #countTable .st-cell .chip,#valTable .st-cell .chip{font-size:10px;white-space:normal}
 .ba-lines table{table-layout:fixed;min-width:0;width:100%}
 .ba-lines th,.ba-lines td{padding:5px 6px;vertical-align:top}
+.ba-lines th:nth-child(1),.ba-lines td:nth-child(1){width:34%}
+.ba-lines th:nth-child(2),.ba-lines td:nth-child(2){width:9%}
+.ba-lines th:nth-child(3),.ba-lines td:nth-child(3){width:9%}
+.ba-lines th:nth-child(4),.ba-lines td:nth-child(4){width:7%}
+.ba-lines th:nth-child(5),.ba-lines td:nth-child(5){width:41%}
 .ba-lines .ba-item-name{overflow-wrap:break-word;word-break:normal}
+.ba-lines .ba-reason-cell,.ba-lines .ba-reason-static,.ba-lines .ba-reason-print{overflow-wrap:anywhere;white-space:pre-wrap;word-break:normal}
+.ba-lines .ba-reason-editor{min-height:52px}
 @media(max-width:900px){#countTable,#valTable{min-width:920px}}
 
 /* v35 - label item manual hanya satu kali (tanpa kode SKU terpisah) */
