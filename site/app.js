@@ -958,7 +958,7 @@ async function loadCount(cid){
  $('#content').innerHTML=`${back}${cycleSwitchHTML()}<div id="upSlot"></div><div class="card">
   <div class="card-head"><div class="row"><h3>SO Berjalan</h3>${chip(data.status)}</div>${edit?btn('Submit Counting','count-submit','dark'):''}</div>
   <div class="toolbar"><input id="countSearch" class="input grow" placeholder="Cari SKU / nama produk" value="${escapeHTML(q.search)}"/>${teamSel}<select id="countFilter" class="input" data-change="count-filter-chg">${options}</select>${btn('Cari','count-find','outline')}${btn('📷 Scan','scan-count','outline')}${rstHTML('count')}</div>
-  <div class="tablewrap"><table id="countTable" class="count-table"><thead><tr><th>Nama Item & Warna</th>${POS.map(([,l])=>`<th class="num">${l}</th>`).join('')}<th class="num">Total</th><th>Alasan (wajib jika selisih)</th><th>Status</th></tr></thead><tbody>${data.items.length?data.items.map(x=>countRowHTML(x,edit)).join(''):'<tr><td colspan="9" class="empty">Tidak ada SKU</td></tr>'}</tbody></table></div>
+  <div class="tablewrap"><table id="countTable" class="count-table"><thead><tr><th class="sku-head">SKU</th><th class="item-head">Nama Item & Warna</th>${POS.map(([,l])=>`<th class="num">${l}</th>`).join('')}<th class="num">Total</th><th>Alasan (wajib jika selisih)</th><th>Status</th></tr></thead><tbody>${data.items.length?data.items.map(x=>countRowHTML(x,edit)).join(''):'<tr><td colspan="9" class="empty">Tidak ada SKU</td></tr>'}</tbody></table></div>
   <div class="pager"><span class="small muted">${n(data.total_filtered?q.offset+1:0)}–${n(Math.min(q.offset+50,data.total_filtered))} dari ${n(data.total_filtered)} SKU</span><div class="row">${btn('← Sebelumnya','count-prev','outline')}${btn('Berikutnya →','count-next','outline')}</div></div>
   <div class="footerhint">Input tersimpan otomatis per baris. Tekan Submit Counting untuk mengirim semua hasil ke validasi SPV.</div>
  </div>`;
@@ -973,10 +973,18 @@ function statusCell(status,reason){
  if(status==='SELISIH')return chip('SELISIH')+(warn?'<small class="need-txt">wajib alasan</small>':'');
  return chip('BELUM','BELUM');
 }
+// Kolom SKU sendiri di depan Nama Item untuk Counting & Validasi SPV.
+// SKU tidak ditemukan diberi penanda, bukan menampilkan Item Name sebagai kode resmi.
+function skuTableCell(x){
+ const sku=String(x.sku||'').trim(), name=String(x.name||'').trim();
+ const missing=!sku || sku.toUpperCase()===name.toUpperCase();
+ return `<td class="sku-col">${missing?'<span class="sku-missing" title="Belum ada SKU resmi pada data SO">Belum ada SKU</span>':`<span class="sku-code" title="${escapeHTML(sku)}">${escapeHTML(sku)}</span>`}</td>`;
+}
 function countRowHTML(x,edit){
  const needsReason=x.status==='SELISIH'&&!(x.reason||'').trim();
  return `<tr data-sku="${escapeHTML(x.sku)}">
-  <td class="nm"><div class="nm-sub">${nameBadge(x.name,x.category)}<small class="mono muted sku-id">${String(x.sku||'').trim().toUpperCase()===String(x.name||'').trim().toUpperCase()?'SKU belum tersedia':'SKU: '+escapeHTML(x.sku)}</small>${x.team?`<span class="team-tag">${escapeHTML(x.team)}</span>`:''}</div></td>
+  ${skuTableCell(x)}
+  <td class="nm"><div class="nm-sub">${nameBadge(x.name,x.category)}${x.team?`<span class="team-tag">${escapeHTML(x.team)}</span>`:''}</div></td>
   ${POS.map(([k,l])=>`<td><div class="pos-wrap"><input class="input count-num pos" data-change="count-row" data-pos="${k}" type="number" min="0" step="1" inputmode="numeric" aria-label="${l}" ${edit?'':'disabled'} value="${x[k]??''}"/>${edit?`<button class="calc-btn" data-act="calc-open" data-label="${escapeHTML(l)}" title="Kalkulator ${l}">🧮</button>`:''}</div></td>`).join('')}
   <td class="num total">${x.total==null?'—':n(x.total)}</td>
   <td><input class="input noteval ${needsReason?'needs-reason':''}" data-change="count-row" maxlength="500" placeholder="Alasan (wajib jika selisih)" ${edit?'':'disabled'} value="${escapeHTML(x.reason||'')}"/></td>
@@ -1305,7 +1313,8 @@ async function loadValidation(){
  const editable=st==='SUBMITTED';
  const noBA=st==='APPROVED'&&(sum.total_skus||0)>0&&sum.variance_skus===0&&sum.missing_skus===0;
  const rowHTML=x=>{const reason=x.spv_note||x.store_note||'';const delta=x.delta==null?'—':signed(x.delta);return `<tr data-sku="${escapeHTML(x.sku)}">
-   <td class="nm"><div class="nm-sub">${nameBadge(x.name,x.category)}<small class="mono muted sku-id">${String(x.sku||'').trim().toUpperCase()===String(x.name||'').trim().toUpperCase()?'SKU belum tersedia':'SKU: '+escapeHTML(x.sku)}</small>${x.team?`<span class="team-tag">${escapeHTML(x.team)}</span>`:''}</div></td>
+   ${skuTableCell(x)}
+   <td class="nm"><div class="nm-sub">${nameBadge(x.name,x.category)}${x.team?`<span class="team-tag">${escapeHTML(x.team)}</span>`:''}</div></td>
    ${editable
      ?`<td class="num sys-cell"><input class="input count-num" data-change="val-field" data-f="system" type="number" min="0" step="1" inputmode="numeric" value="${x.system??''}"/></td>`
      :`<td class="num sys-cell">${n(x.system)}</td>`}
@@ -1328,7 +1337,7 @@ async function loadValidation(){
     <button class="${v.filter==='ALL'?'on':''}" data-act="val-filter" data-v="ALL">Semua (${n(sum.total_skus)})</button>
    </div>
    <input id="valSearch" class="input grow" placeholder="Cari item / nama" value="${escapeHTML(v.search)}"/>${btn('Cari','val-find','outline')}${rstHTML('validation')}</div>
-  <div class="tablewrap"><table id="valTable" class="val-table"><thead><tr><th>Item & Warna</th><th class="num">System</th>${POS.map(([,l])=>`<th class="num">${l}</th>`).join('')}<th class="num">Total Store</th><th>Status</th><th>Alasan</th></tr></thead><tbody>${data.items.map(rowHTML).join('')||'<tr><td colspan="9" class="empty">Tidak ada SKU.</td></tr>'}</tbody></table></div>
+  <div class="tablewrap"><table id="valTable" class="val-table"><thead><tr><th class="sku-head">SKU</th><th class="item-head">Item & Warna</th><th class="num">System</th>${POS.map(([,l])=>`<th class="num">${l}</th>`).join('')}<th class="num">Total Store</th><th>Status</th><th>Alasan</th></tr></thead><tbody>${data.items.map(rowHTML).join('')||'<tr><td colspan="10" class="empty">Tidak ada SKU.</td></tr>'}</tbody></table></div>
   <div class="pager"><span class="small muted">${n(data.total_filtered?v.offset+1:0)}–${n(Math.min(v.offset+50,data.total_filtered))} / ${n(data.total_filtered)} SKU</span><div class="row">${btn('← Sebelumnya','val-prev','outline')}${btn('Berikutnya →','val-next','outline')}</div></div>
   <div class="footerhint">Alasan dan SPV Qty tersimpan otomatis saat diubah. Untuk SKU selisih, alasan wajib diisi sebelum Approve. Jika SPV Qty kosong, sistem memakai total fisik Store.</div>
  </div>`;
@@ -1810,6 +1819,7 @@ function baArticle(h,s,lines,total,full,editReasons=false){
   <header class="ba-head"><img src="logo.png" alt=""/><div><h2>BERITA ACARA STOCK OPNAME</h2><p class="mono">${escapeHTML(h.ba_no)}</p></div></header>
   <table class="ba-meta"><tr><td>Toko</td><td>${escapeHTML(h.store_name)} (${escapeHTML(h.store_code)})</td><td>Tanggal SO</td><td>${fmtDT(h.started_at)}</td></tr>
   <tr><td>Dibuat oleh</td><td>${escapeHTML(h.created_name||'')}</td><td>Tanggal BA</td><td>${fmtDT(h.created_at)}</td></tr></table>
+  ${Number(h.sku_correction_count||0)>0?`<p class="ba-sku-correction"><b>KOREKSI KODE SKU:</b> ${n(h.sku_correction_count)} SKU disesuaikan dengan Item Library pada ${fmtDT(h.sku_correction_at)}. Hanya identitas SKU yang diperbarui; jumlah, nilai selisih, alasan, serta persetujuan asli tidak berubah. Dokumen yang diunduh sebelum koreksi harus diunduh ulang.</p>`:''}
   <p class="ba-text">Telah dilakukan stock opname pada toko tersebut, dengan hasil sebagai berikut:</p>
   <table class="ba-sum"><tbody>
    <tr><td>Total SKU dihitung</td><td class="num">${n(s.total_skus)}</td><td>SKU sesuai sistem</td><td class="num">${n(s.tally_count)}</td></tr>
@@ -1880,7 +1890,7 @@ async function baDownload(ids){
  await baFlushReasons();
  if(!ids.length){toast('Pilih BA dulu.',true);return}
  const docs=await rpc('ba_export',{p_bas:ids});
- const css='body{font-family:system-ui,Arial,sans-serif;color:#111;margin:24px;font-size:12.5px}table{width:100%;border-collapse:collapse}td,th{padding:5px 8px;border:1px solid #d1d5db;text-align:left}th{background:#f5f3ff}.num{text-align:right}.mono{font-family:monospace}.ba-head{display:flex;align-items:center;gap:14px;border-bottom:2px solid #111;padding-bottom:12px}.ba-head h2{margin:0;font-size:18px}.ba-meta td{border:0}.ba-sum td{border-color:#999}.ba-sign{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:22px}.ba-sign>div{border:1px solid #d1d5db;border-radius:8px;padding:12px;min-height:90px}.ba-stamp{margin-top:8px;display:grid;gap:2px}.ba-stamp small{color:#6b7280}.ba-text{margin:10px 0}.ba-adjnote{color:#065f46}.ba-doc{border:0;padding:0;max-width:none}.ba-lines table{table-layout:fixed;width:100%}.ba-lines td,.ba-lines th{padding:5px 5px}.ba-lines th{font-size:10.5px;letter-spacing:0}.ba-lines td:first-child{overflow-wrap:anywhere}.ba-item-name{overflow-wrap:break-word;vertical-align:top}.ba-reason-cell{overflow-wrap:anywhere;white-space:pre-wrap;vertical-align:top}.ba-page{break-after:page;margin-bottom:24px}.ba-page:last-child{break-after:auto}tr{break-inside:avoid}';
+ const css='body{font-family:system-ui,Arial,sans-serif;color:#111;margin:24px;font-size:12.5px}table{width:100%;border-collapse:collapse}td,th{padding:5px 8px;border:1px solid #d1d5db;text-align:left}th{background:#f5f3ff}.num{text-align:right}.mono{font-family:monospace}.ba-head{display:flex;align-items:center;gap:14px;border-bottom:2px solid #111;padding-bottom:12px}.ba-head h2{margin:0;font-size:18px}.ba-meta td{border:0}.ba-sum td{border-color:#999}.ba-sign{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:22px}.ba-sign>div{border:1px solid #d1d5db;border-radius:8px;padding:12px;min-height:90px}.ba-stamp{margin-top:8px;display:grid;gap:2px}.ba-stamp small{color:#6b7280}.ba-text{margin:10px 0}.ba-sku-correction{border:1px solid #d97706;padding:8px 10px;margin:10px 0;font-size:11px;background:#fffbeb}.ba-adjnote{color:#065f46}.ba-doc{border:0;padding:0;max-width:none}.ba-lines table{table-layout:fixed;width:100%}.ba-lines td,.ba-lines th{padding:5px 5px}.ba-lines th{font-size:10.5px;letter-spacing:0}.ba-lines td:first-child{overflow-wrap:anywhere}.ba-item-name{overflow-wrap:break-word;vertical-align:top}.ba-reason-cell{overflow-wrap:anywhere;white-space:pre-wrap;vertical-align:top}.ba-page{break-after:page;margin-bottom:24px}.ba-page:last-child{break-after:auto}tr{break-inside:avoid}';
  const body=docs.map(d=>`<section class="ba-page">${baArticle(d.header,d.summary,d.lines,d.summary.variance_count||0,true).replace(/<img[^>]*>/,'')}</section>`).join('');
  const title=docs.length===1?docs[0].header.ba_no:`BA gabungan ${docs.length} BA`;
  const html=`<!doctype html><html lang="id"><head><meta charset="utf-8"/><title>${escapeHTML(title)}</title><style>${css}</style></head><body>${body}</body></html>`;

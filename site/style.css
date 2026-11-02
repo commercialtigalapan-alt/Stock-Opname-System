@@ -1266,3 +1266,39 @@ body{-webkit-font-smoothing:antialiased}
 
 /* SKU resmi di bawah nama item pada halaman Counting/Validasi */
 .sku-id{display:block;font-size:11px;white-space:normal;margin-top:3px;overflow-wrap:anywhere}
+
+/* Informasi koreksi kode SKU pada BA historis */
+.ba-sku-correction{border:1px solid #d97706;border-radius:6px;background:#fffbeb;padding:9px 12px;margin:12px 0;font-size:12px;line-height:1.45;color:#78350f}
+@media print{.ba-sku-correction{border-color:#999;background:#fff;color:#000}}
+
+/* v28: SKU sebagai kolom pertama pada Counting & Validasi SPV.
+   Tabel tetap proporsional; layar sempit memakai horizontal scroll. */
+#countTable,#valTable{table-layout:fixed;width:100%;border-collapse:separate;border-spacing:0}
+#countTable{min-width:1350px}
+#valTable{min-width:1260px}
+#countTable th,#valTable th{white-space:normal;vertical-align:middle}
+#countTable .sku-col,#valTable .sku-col{width:11.5%;min-width:0;white-space:normal;vertical-align:middle}
+#countTable .sku-head,#valTable .sku-head{width:11.5%;min-width:0}
+#countTable .item-head,#countTable td.nm{width:21.5%;min-width:0}
+#valTable .item-head,#valTable td.nm{width:21%;min-width:0}
+#countTable th:nth-child(n+3):nth-child(-n+6),#countTable td:nth-child(n+3):nth-child(-n+6){width:8%}
+#countTable th:nth-child(7),#countTable td:nth-child(7){width:7%}
+#countTable th:nth-child(8),#countTable td:nth-child(8){width:17.5%}
+#countTable th:nth-child(9),#countTable td:nth-child(9){width:10.5%}
+#valTable th:nth-child(3),#valTable td:nth-child(3){width:7%}
+#valTable th:nth-child(n+4):nth-child(-n+7),#valTable td:nth-child(n+4):nth-child(-n+7){width:7%}
+#valTable th:nth-child(8),#valTable td:nth-child(8){width:8%}
+#valTable th:nth-child(9),#valTable td:nth-child(9){width:11%}
+#valTable th:nth-child(10),#valTable td:nth-child(10){width:13.5%}
+#countTable .sku-code,#valTable .sku-code{display:inline-block;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:11.5px;font-weight:700;line-height:1.35;color:#3730a3;background:#eef2ff;border:1px solid #c7d2fe;border-radius:7px;padding:5px 6px;max-width:100%;box-sizing:border-box;overflow-wrap:anywhere;word-break:break-word}
+#countTable .sku-missing,#valTable .sku-missing{display:inline-block;font-size:11px;line-height:1.3;color:#9a3412;background:#fff7ed;border:1px solid #fed7aa;border-radius:7px;padding:5px 7px;max-width:100%;overflow-wrap:break-word}
+#countTable td.nm .nm-sub,#valTable td.nm .nm-sub{min-width:0;display:flex;align-items:flex-start;gap:5px;flex-wrap:wrap}
+#countTable td.nm .nbadge-c,#valTable td.nm .nbadge-c{max-width:100%;white-space:normal;overflow-wrap:break-word;word-break:normal}
+#countTable .pos-wrap{min-width:0;display:flex;align-items:center;gap:4px}
+#countTable .pos-wrap .count-num{width:60px;min-width:0;flex:0 1 60px}
+#countTable .pos-wrap .calc-btn{width:26px;flex:0 0 26px}
+#countTable .count-num,#valTable .count-num{max-width:100%;box-sizing:border-box}
+#countTable .noteval,#valTable .reason-in{min-width:0;max-width:100%;box-sizing:border-box}
+#countTable .st-cell,#valTable .st-cell{min-width:0;white-space:normal}
+#countTable .st-cell .chip,#valTable .st-cell .chip{min-width:0}
+@media (max-width:900px){#countTable{min-width:1350px}#valTable{min-width:1260px}}

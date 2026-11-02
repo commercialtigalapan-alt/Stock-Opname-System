@@ -120,3 +120,31 @@ Sumber: Item Library DC TIGALAPAN (7.295 baris). 6.052 mempunyai SKU resmi dan 1
 - Migrasi harus diterapkan di proyek Supabase untuk mengubah data yang sudah tersimpan. Deploy frontend saja tidak akan memperbaiki data di database.
 - **Cadangkan database Supabase dulu**, jalankan migrasi 026 setelah 025, review hasil SELECT (hasil `*_converted`), lalu deploy site/. Transaksi akan rollback jika ada benturan SKU.
 - Catatan: tanpa akses database produksi, jumlah baris yang berhasil dicocokkan di database tidak dapat diketahui. Uji pada salinan database dulu.
+
+
+## Update 027 — Koreksi SKU BA yang sudah ditandatangani / diekspor (2026-11-02)
+
+1. **Backup PostgreSQL** dan arsipkan dokumen HTML/PDF BA yang sudah ditandatangani sebelum eksekusi. Hentikan upload/counting.
+2. Jalankan migrasi **025 lalu 026** jika belum; kemudian jalankan **`supabase/migrations/202611020027_ba_historical_sku_correction.sql`** melalui Supabase SQL Editor pada database SO. Jangan jalankan migrasi lama sesudahnya.
+3. Migrasi 027 hanya memperbaiki baris detail SKU pada BA **yang masih menyimpan detail dan belum cleaned**, termasuk yang telah ditandatangani SPV, disetujui Manager, dan diunduh sebagai HTML. **BA cleaned/terhapus permanen tidak bisa dipulihkan dari database**.
+4. Catatan Qty, nilai, alasan, nomor BA, waktu dan identitas tanda tangan / approval tidak diubah. Koreksi disimpan dengan old_sku dan new_sku ke tabel `tsi_so_ba_sku_revision` dan event audit `BA_SKU_OFFICIAL_CORRECTION`. Semua perubahan dalam satu transaksi; jika ada SKU bentrok, dibatalkan semuanya.
+5. Deploy `site/` untuk menampilkan label **KOREKSI KODE SKU** pada halaman Detail BA, cetakan, dan file HTML baru.
+6. **Unduh ulang HTML/PDF BA yang sudah pernah diekspor** agar kode SKU dalam file sesuai hasil koreksi. File yang tersimpan di luar database tidak dapat diubah otomatis. Jika diperlukan, simpan file lama sebagai versi asli dan file baru sebagai versi revisi administratif.
+7. Lakukan audit di SQL Editor dengan contoh query berikut (read-only):
+
+```sql
+select ba_no, store_code, count(*) sku_corrected, max(corrected_at) revised_at
+from public.tsi_so_ba_sku_revision group by ba_no,store_code order by revised_at desc;
+select ba_no, item_name, old_sku, new_sku, corrected_at
+from public.tsi_so_ba_sku_revision order by corrected_at desc limit 100;
+```
+
+**Keterbatasan:** SQL belum diuji pada database produksi; hasil nyata bergantung pada kecocokan data dan kelengkapan Item Library (1.243 item tanpa SKU tidak dapat dipetakan). Jangan menganggap tanda tangan lama sebagai persetujuan baru atas dokumen revisi, karena tanda tangan tidak diperbarui.
+
+
+## Update tampilan 028 — SKU kolom terpisah Counting & Validasi SPV (2026-11-02)
+
+- Tabel Counting dan tabel Detail Validasi SPV menggunakan **kolom SKU di paling kiri** diikuti **Nama Item**, lalu semua kolom angka, alasan, dan status yang sudah ada.
+- SKU ditampilkan sebagai kode resmi; jika data lama masih memakai Item Name sebagai SKU, kolom diberi penanda **Belum ada SKU**, bukan menampilkan nama item sebagai kode. Tidak ada perubahan pada key SKU yang dipakai untuk perhitungan dan penyimpanan.
+- Pembagian lebar tabel menggunakan persentase dan minimal width yang sesuai input kalkulator Counting; pada tablet/HP scroll horizontal di dalam tabel untuk menghindari teks bertumpuk.
+- **Tidak ada migrasi SQL untuk perubahan layout.** Migrasi 027 yang disertakan adalah untuk koreksi SKU BA historis yang sebelumnya diminta. Urutan migrasi: 025 → 026 → 027.
