@@ -177,3 +177,15 @@ from public.tsi_so_ba_sku_revision order by corrected_at desc limit 100;
 ## Hotfix 029 - Upload & Ganti Inventory (2 Nov 2026)
 
 Jika muncul pesan `DELETE requires a WHERE clause` saat tombol **Upload & Ganti Inventory** diklik, jalankan `supabase/migrations/202611020029_fix_upload_delete_where.sql` di Supabase SQL Editor setelah migrasi 028. Perintah pembersihan tabel sementara dalam `tsi_so_upload` diubah dari `DELETE FROM pg_temp._up028_rekey` menjadi `TRUNCATE TABLE pg_temp._up028_rekey`. Hanya objek sementara yang dikosongkan. Tidak ada perubahan frontend, dan tidak perlu mengganti data inventory secara manual. Backup database sebelum perbaikan. Setelah SQL berhasil, ulangi upload dengan CSV yang sama dan periksa jumlah SKU & riwayat upload.
+
+### Update v33 — Indikator status SKU resmi di Cakupan SKU
+
+Tersedia rekap jumlah SKU **sudah resmi** dan **belum resmi** berdasarkan Inventory aktif setiap toko, lengkap dengan rasio persentase, filter status, dan tanda status tiap SKU. Migrasi wajib: `supabase/migrations/202611020030_cakupan_sku_resmi.sql` (dijalankan setelah migrasi 029). Panduan lengkap: `PANDUAN_030_CAKUPAN_SKU_RESMI.md`.
+
+
+## Hotfix 031 — Upload inventory statement timeout (2026-11-02)
+
+Jika `Upload & Ganti Inventory` menampilkan `canceling statement due to statement timeout` saat file 8.000+ SKU, jalankan `supabase/migrations/202611020031_optimize_inventory_upload_timeout.sql` di Supabase SQL Editor setelah migrasi 029/030. Perbaikan menggunakan pemetaan SKU dengan indexed temporary staging, tidak mengubah aturan bisnis dan tidak perlu deploy ulang frontend. Panduan: `HOTFIX_031_UPLOAD_TIMEOUT.md`.
+
+## Update v35 (2 Nov 2026): Identitas Nama Item, tanpa kolom SKU
+Aplikasi pada versi ini menggunakan Nama Item yang dinormalisasi sebagai kunci operasional. Upload inventory cukup menggunakan Item Name/Name - Variant dan Ending. Kolom SKU dihilangkan dari tampilan Counting, Validasi, Cakupan, Berita Acara, dan ekspor hasil SO; color map diperluas. **Wajib** menjalankan migrasi `202611020032_item_name_identity.sql` terlebih dahulu, setelah migrasi 031. Lihat `PANDUAN_032_NAMA_ITEM_DAN_WARNA.md` untuk pengamanan, kondisi konflik dan catatan BA historis.

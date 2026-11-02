@@ -1,0 +1,44 @@
+const fs=require('fs'),path=require('path'),assert=require('assert'),vm=require('vm');
+const root=path.join(__dirname,'..');const js=fs.readFileSync(path.join(root,'site/app.js'),'utf8');
+const css=fs.readFileSync(path.join(root,'site/style.css'),'utf8');
+const sql=fs.readFileSync(path.join(root,'supabase/migrations/202611020032_item_name_identity.sql'),'utf8');
+const header=id=>js.match(new RegExp('<table id="'+id+'"[^]*?<\\/thead>'))[0];
+for(const id of ['countTable','valTable']){
+ const h=header(id);assert(!/sku-head|<th[^>]*>SKU<\/th>/i.test(h));
+ assert(h.includes('Nama Item')||h.includes('Item & Warna'));
+}
+assert(/<table id="countTable"[^]*?colspan="8"/.test(js));
+assert(/<table id="valTable"[^]*?colspan="9"/.test(js));
+const ba=js.slice(js.indexOf('function baArticle('),js.indexOf('async function loadBADetail('));
+assert(!ba.includes('<th>SKU</th>'));assert(!ba.includes('escapeHTML(l.sku)}</td>'));
+assert(ba.includes('data-sku="${escapeHTML(l.sku)}"')); // internal RPC identifier
+assert(js.includes("'TIPE','NAME_VARIANT'"));
+assert(!js.includes("'TIPE','SKU','NAME_VARIANT'"));
+assert(!js.includes('SKU Pending</small>'));
+const parse=js.match(/function parseCSV\(text\)\{[^]*?\n\}/)[0];
+const norm=js.match(/function normHead\(s\)\{[^\n]+/)[0];
+const imp=js.match(/function importRows\(csv\)\{[^]*?\n\}/)[0];
+const ctx={};vm.runInNewContext(parse+'\n'+norm+'\n'+imp,ctx);
+const text='Item Name,Category,Ending,SKU\nABU MISTY + RIB 2XL,COMBED 24S,34,A90-001\nCOKLAT SUSU 24S M,COMBED 24S,0,A91-002';
+const values=vm.runInNewContext('importRows('+JSON.stringify(text)+')',ctx);
+assert.equal(values.length,2);assert.equal(values[0].name,'ABU MISTY + RIB 2XL');
+assert.equal(values[0].sku,undefined);assert.equal(values[1].ending,0);
+assert.throws(()=>vm.runInNewContext('importRows('+JSON.stringify('Item Name,Ending\nSAMA A,1\nsama  a,3')+')',ctx),/duplikat/);
+const colors=js.match(/function colorName\(name,cat\)\{[^]*?\n\}/)[0];
+vm.runInNewContext(colors,ctx);
+assert.equal(ctx.colorName('ABU MISTY + RIB 2XL','COMBED 24S'),'ABU MISTY');
+assert.equal(ctx.colorName('MERAH CABE 24S PDK S','COMBED 24S'),'MERAH CABE');
+assert(js.includes('"CACTUS GRN"'));assert(js.includes('"HIJAU BTL"'));assert(js.includes('"FANTA"'));
+assert(css.includes('#countTable col.c-item{width:29%}'));
+assert(css.includes('#valTable col.v-item{width:29%}'));
+assert(sql.includes('tsi_so_name_key(p_name text)'));
+assert(sql.includes('UPDATE public.tsi_so_ba b SET reason_overrides'));
+assert(sql.includes('UPDATE public.tsi_so_lines l SET sku=public.tsi_so_name_key(l.item_name)'));
+assert(sql.includes("WHERE c.store_code=v_store"));
+assert(sql.includes('CREATE OR REPLACE FUNCTION public.tsi_so_upload_check'));
+console.log('v35 name-only source tests: PASS');
+const cwidth=[29,9.3,9.3,9.3,9.3,6.8,18,9].reduce((a,b)=>a+b,0);
+const vwidth=[29,8,8,8,8,8,8,11,12].reduce((a,b)=>a+b,0);
+assert(Math.abs(cwidth-100)<1e-6,'Counting columns must add to 100%');
+assert(Math.abs(vwidth-100)<1e-6,'Validation columns must add to 100%');
+assert(!/<th>SKU<\/th>/.test(header('countTable')));

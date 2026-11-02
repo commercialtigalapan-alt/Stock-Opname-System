@@ -1,0 +1,1 @@
+Tes dalam folder ini ditulis untuk workflow kode SKU versi v28-v34, dan sengaja tidak dijalankan sebagai tes regresi v35 karena perilaku SKU resmi/PENDING telah diganti dengan Nama Item. Disimpan sebagai referensi histori.

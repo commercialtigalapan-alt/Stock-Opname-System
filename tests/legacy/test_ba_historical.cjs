@@ -1,0 +1,18 @@
+const fs=require('fs'),assert=require('assert'),path=require('path');
+const root=path.join(__dirname,'..');
+const sql=fs.readFileSync(path.join(root,'supabase/migrations/202611020027_ba_historical_sku_correction.sql'),'utf8');
+const js=fs.readFileSync(path.join(root,'site/app.js'),'utf8');
+assert(sql.startsWith('-- Migration 027'));
+assert(sql.includes('b.cleaned_at is null'));
+assert(sql.includes('from public.tsi_so_ba b\njoin public.tsi_so_lines'));
+assert(sql.includes('BA_SKU_OFFICIAL_CORRECTION'));
+assert(sql.includes('tsi_so_ba_sku_revision'));
+assert(sql.includes("raise exception 'KONFLIK SKU"));
+assert(sql.includes('reason_overrides'));
+assert(sql.includes('begin;')&&sql.trim().endsWith('commit;'));
+assert.equal((sql.match(/create or replace function public.tsi_so_ba_(get|export)\(/g)||[]).length,2);
+assert(js.includes('KOREKSI KODE SKU'));
+assert(js.includes('h.sku_correction_count'));
+assert(js.includes('style="width:38%"'));
+assert(js.includes('ba-reason-editor'));
+console.log('Historical BA SKU correction: PASS');

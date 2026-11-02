@@ -67,12 +67,15 @@ function colorName(name,cat){
  const m=up.match(/^(.*?)\s+\d+S(\s|$)/);
  let v=m?m[1]:((c&&up.startsWith(c+' '))?up.slice(c.length+1):up);
  v=(' '+v).replace(/(\s+(XXXS|XXS|XS|S|M|L|XL|XXL|XXXL|[2-6]XL|ALL\s?SIZE|FREE\s?SIZE|\d{1,3}))+$/,'').trim();
+ v=v.replace(/^DEFECT\s+[ABC](?:\d+(?:-\d+)?)?\s+/,'').replace(/^REJECT\s+/,'');
+ v=v.replace(/\s+(?:\+\s*RIB|KID|KIDS|PDK|PJG|TUNIK|OS|MAMU)(?:\s+(?:KID|KIDS|PDK|PJG|MAMU))?$/,'').trim();
  return v||'TANPA WARNA';
 }
 const COLOR_EXACT={'HITAM':'#111827','PUTIH':'#ffffff','ABU MUDA':'#c4c9d1','ABU TUA':'#4b5563','TANPA WARNA':'#e5e7eb',
  'SKY BLUE':'#7dd3fc','STEEL BLUE':'#4b6584','ORANGE BATA':'#c2410c','COKLAT TUA':'#6b3f24','MERAH CABE':'#dc2626',
  'BENHUR':'#2563eb','TOSCA':'#14b8a6','TURKIS':'#06b6d4','CREAM':'#f3e3bf','NAVY':'#1e3a8a','MAROON':'#7f1d1d','BURGUNDY':'#800020',
  'OFF WHITE':'#f8f5ee','BABY PINK':'#f9c6d6','ALMOND BROWN':'#a0785a','BLUSH RED':'#d9546b','BABY BLUE':'#bae6fd','PUTIH ARMY':'#c8cfb0','PUTIH-ARMY':'#c8cfb0'};
+const COLOR_LIBRARY = {"ABU MISTY":"#a3a5a8","ABU SDG":"#787d85","ABU SEDANG":"#787d85","HITAM MLS":"#17191c","PUTIH MLS":"#f7f7f4","COKLAT SUSU":"#b38463","COKLAT TUA":"#59392b","HIJAU BTL":"#125b36","HIJAU BOTOL":"#125b36","HIJAU ARMY":"#556b36","HIJAU FUJI":"#4b9b64","HIJAU PCK":"#95ae41","HIJAU PUCAT":"#95ae41","HIJAU LUMUT":"#526d34","CACTUS GRN":"#687d4d","CACTUS GREEN":"#687d4d","MINERAL GREEN":"#6c9589","MINERAL GREEN KID":"#6c9589","PASTEL GREEN":"#b4d4b2","SAGE GREEN":"#9dac8d","OLIVE GREEN":"#757f48","ELECTRIC LM":"#c0d84b","KUNING BSK":"#f4c047","KUNING KNR":"#f4e33a","BABY YLW":"#faef99","FANTA":"#f04a69","SALEM":"#ffa596","SALMON RED":"#dc6970","DUSTY PINK":"#c88c9e","PINK SOFT":"#f6a9c6","BLUSH ORANGE":"#e79c7f","DEEP BLUE":"#21466c","DENIM BLUE":"#4e719d","DARK GREY":"#54585f","MEDIAVAL BLUE":"#54748e","MEDIEVAL BLUE":"#54748e","TOFFEE":"#ae7b50","MAHOGANY":"#69422e","CINNAMON":"#ae6a45","ALMON BROWN":"#a0785a","ALMOND BROWN":"#a0785a","DUSTY VIOLET":"#9e84af","TWILIGHT MAUVE":"#9b8196","SENECA ROCK":"#8f928d","SUGAR SWIZZLE":"#eee4d5","PUTIH NETRAL":"#f8f8f3","BLACK NT":"#151515","AUTUMN ORANGE":"#c86a31","JET BLACK":"#101014","TOSCA MUDA":"#89dacc","SALMON":"#fa8072","BLUSH RED":"#d9546b","BABY PINK":"#f9c6d6","OFF WHITE":"#f8f5ee","ORANGE BATA":"#c2410c","STEEL BLUE":"#4b6584","MERAH CABE":"#dc2626","BENHUR":"#2563eb","TURKIS":"#06b6d4","NAVY BLUE":"#172b54","BLACK":"#141414","LIGHT BROWN":"#ba916d","DARK BROWN":"#5b3a2a","ATLANTIC SEA":"#3b7382","BERING SEA":"#317a80","TERRA COTTA":"#c57050","TERRACOTTA":"#c57050","KHAKY":"#c3b091","KHAKI":"#c3b091","DIJON":"#c29b37","SYCAMORE":"#b4a283","ERMINE":"#e8e2d7","POPPY SEED":"#575a60","POPY SEED":"#575a60","CROCODILE":"#5b6543","BUTTER":"#f6e2a8","TWILIGHT":"#8c7690","DEEP BL":"#21466c","TERRA COTTA POCKET":"#c57050","ATLANTIC SEA KID":"#3b7382","PUTIH NAVY":"#8a9eb8","PUTIH HITAM":"#a6a8ad","PUTIH TOFFEE":"#c6b3a2","BLACK CHOCO":"#534638","CREAM ARMY":"#b3ad85","WHITE NAVY":"#8a9eb8"};
 const COLOR_WORD={HITAM:'#111827',BLACK:'#111827',BLACKS:'#111827',BLK:'#111827',JET:'#111827',ONYX:'#111827',
  PUTIH:'#ffffff',WHITE:'#ffffff',WHT:'#ffffff',IVORY:'#fffff0',GADING:'#f5ecd7',SUSU:'#fbf7ee',SNOW:'#fffafa',PEARL:'#f3efe6',
  ABU:'#9ca3af',GREY:'#9ca3af',GRAY:'#9ca3af',GRY:'#9ca3af',CHARCOAL:'#374151',ARANG:'#374151',ANTRASIT:'#3f3f46',ANTHRACITE:'#3f3f46',
@@ -99,7 +102,13 @@ const mixHex=(hex,target,t)=>{const a=hexToRgb(hex),b=hexToRgb(target);return rg
 const luminance=hex=>{const c=hexToRgb(hex).map(v=>{v/=255;return v<=0.03928?v/12.92:Math.pow((v+0.055)/1.055,2.4)});return 0.2126*c[0]+0.7152*c[1]+0.0722*c[2]};
 function colorHex(name){
  const key=String(name||'').toUpperCase().replace(/[-\/_]+/g,' ').replace(/\s+/g,' ').trim();
+ if(COLOR_LIBRARY[key])return COLOR_LIBRARY[key];
  if(COLOR_EXACT[key])return COLOR_EXACT[key];
+ // Nama produk yang mengandung keterangan model/seri tetap menggunakan warna
+ // yang dikenali, dengan prioritas kecocokan frasa terpanjang.
+ const known=Object.keys(COLOR_LIBRARY).sort((a,b)=>b.length-a.length).find(c=>
+   c.length>=4 && (key===c || key.startsWith(c+' ') || key.endsWith(' '+c) || key.includes(' '+c+' ')));
+ if(known)return COLOR_LIBRARY[known];
  const words=key.split(' ').filter(Boolean);
  const base=words.find(w=>COLOR_WORD[w]);
  if(!base)return '#94a3b8';
@@ -205,7 +214,7 @@ const PAGE={
  dashboard:['Dashboard','Ringkasan operasional Stock Opname'],
  schedule:['SO Schedule','Jadwal Partial dan Grand Stock Opname per toko'],
  count:['SO Counting','Hitung stok per posisi di desktop, tablet, atau smartphone'],
- coverage:['Cakupan SKU','Setiap SKU wajib ter-SO sebelum boleh di-SO lagi dalam periode ini'],
+ coverage:['Cakupan Item','Setiap item wajib ter-SO sebelum boleh di-SO lagi dalam periode ini'],
  validation:['Validasi SPV','Review hasil counting toko, validasi selisih, lalu approve SO'],
  export:['Export & Pembersihan','Export hasil SO APPROVED ke CSV, lalu bersihkan detail dari database'],
  upload:['Upload Inventory','Ganti inventory aktif toko. System qty SO yang berjalan ikut diperbarui sampai SUBMITTED'],
@@ -216,7 +225,7 @@ function menu(){const p=state.me.role;return [
  ['dashboard','Dashboard','⌂','MAIN'],
  ['schedule','SO Schedule','▦','STOCK OPNAME'],
  ['count','Counting','☑','STOCK OPNAME'],
- ['coverage','Cakupan SKU','◎','STOCK OPNAME'],
+ ['coverage','Cakupan Item','◎','STOCK OPNAME'],
  ...(p!=='store'?[['validation','Validasi SPV','✓','STOCK OPNAME']]:[]),
  ...(p!=='store'?[['ba','Berita Acara','§','STOCK OPNAME']]:[]),
  ...(p!=='store'?[['export','Export & Pembersihan','⤓','REPORT & SETTINGS']]:[]),
@@ -296,7 +305,7 @@ const accOf=r=>accuracyOf(r);
 function gridStyle(n){return `style="--n:${Math.min(Math.max(n,1),4)}"`}
 function storeCard(s){const pv=s.total?Math.round(100*s.done/s.total):0;
  return `<div class="store-card st-${escapeHTML(s.status||'NONE').replace(/\s+/g,'_')}"><div class="sc-head"><div><strong>${escapeHTML(s.name)}</strong><small>${escapeHTML(s.code)} • ${escapeHTML(s.area||'')}</small></div>${chip(s.status,s.status==='BELUM SO'?'BELUM SO':undefined)}</div>
- <div class="sc-line"><span>${n(s.done)} / ${n(s.total)} SKU selesai (SO berjalan)</span><b>${pv}%</b></div><div class="bar"><span style="width:${pv}%"></span></div></div>`;
+ <div class="sc-line"><span>${n(s.done)} / ${n(s.total)} item selesai (SO berjalan)</span><b>${pv}%</b></div><div class="bar"><span style="width:${pv}%"></span></div></div>`;
 }
 function analyticsRows(rows){
  return rows.map(r=>{const a=accOf(r);return `<tr><td><b>${escapeHTML(r.name)}</b><br><small class="muted">${escapeHTML(r.code)}</small></td><td>${escapeHTML(r.area||'—')}</td><td>${escapeHTML(r.spv||'—')}</td><td class="num">${n(r.so_total)}</td><td class="num">${n(r.so_approved)}</td><td class="num">${P(a.sku)}${barHTML(a.sku)}</td><td class="num">${P(a.qty)}</td><td class="num">${P(a.val)}</td><td class="num">${signed(r.net_qty_diff)}</td><td class="num">${rp(r.abs_value)}</td></tr>`}).join('');
@@ -351,7 +360,7 @@ function chartTabHTML(d,rows,trend){
  const tr=trend.filter(r=>codes.has(r.store_code));
  const buckets=[...new Set(tr.map(r=>r.bucket))].sort();
  const bl=buckets.map(b=>bucketLabel(b,d.bucket||'week'));
- // 1) Tren akurasi SKU per toko: semua toko tampil, tanpa garis gabungan
+ // 1) Tren akurasi Item per toko: semua toko tampil, tanpa garis gabungan
  const stores=rows.filter(r=>tr.some(x=>x.store_code===r.code)).map(r=>r.code);
  const series=stores.map((code,i)=>({name:names.get(code),color:CHART_COLORS[i%CHART_COLORS.length],
   values:buckets.map(b=>{const x=tr.find(t=>t.store_code===code&&t.bucket===b);return x&&x.appr_total>0?x.appr_tally/x.appr_total:null})}));
@@ -365,7 +374,7 @@ function chartTabHTML(d,rows,trend){
  const vmax2=Math.max(1,...vals.map(x=>Math.max(x.m,x.s)));
  const valHTML=vals.length?vals.map(x=>`<div class="hbar-pair"><span class="hbar-l" title="${escapeHTML(x.name)}">${escapeHTML(x.name)}</span><div><div class="hbar-t"><span class="hbar-f miss" style="width:${(x.m/vmax2*100).toFixed(1)}%"></span></div><div class="hbar-t"><span class="hbar-f sur" style="width:${(x.s/vmax2*100).toFixed(1)}%"></span></div></div><small class="num">${rp(-x.m)}<br>${rp(x.s,true)}</small></div>`).join('')+'<div class="legend"><span><i style="background:#dc2626"></i>Kekurangan</span><span><i style="background:#16a34a"></i>Kelebihan</span></div>':'<div class="empty">Tidak ada nilai selisih pada periode ini.</div>';
  return `<div class="chart-grid">
-  <div class="card chart-card chart-wide"><div class="card-head"><div><h3>Tren Akurasi SKU per Toko</h3><p class="muted small">Batang = akurasi SKU periode terakhir: hijau ≥ 95%, kuning ≥ 85%, merah &lt; 85%. Garis kecil = tren per periode, Δ = selisih dibanding periode sebelumnya.</p></div></div>${trendHTML}</div>
+  <div class="card chart-card chart-wide"><div class="card-head"><div><h3>Tren Akurasi Item per Toko</h3><p class="muted small">Batang = akurasi Item periode terakhir: hijau ≥ 95%, kuning ≥ 85%, merah &lt; 85%. Garis kecil = tren per periode, Δ = selisih dibanding periode sebelumnya.</p></div></div>${trendHTML}</div>
   <div class="card chart-card"><div class="card-head"><div><h3>Volume SO Approved</h3><p class="muted small">Jumlah SO APPROVED per periode.</p></div></div>${volHTML}</div>
   <div class="card chart-card"><div class="card-head"><div><h3>Nilai Selisih per Toko</h3><p class="muted small">Kekurangan dan kelebihan stok pada SO APPROVED.</p></div></div>${valHTML}</div>
  </div>`;
@@ -397,7 +406,7 @@ async function showDashboard(){
  if(d.tab==='kpi'){
   body=`<div class="sec-title">Ringkasan Operasional <small>Periode: ${escapeHTML(rangeSummary(d.range))}</small></div>
   <div class="kpis">
-   ${kpi('o','SKU Accuracy',P(a.sku),`${n(k.appr_tally)} dari ${n(k.appr_total)} SKU pada SO APPROVED`)}
+   ${kpi('o','Akurasi Item',P(a.sku),`${n(k.appr_tally)} dari ${n(k.appr_total)} item pada SO APPROVED`)}
    ${kpi('g','Qty Accuracy',P(a.qty),'System Qty vs Actual Qty (SO APPROVED)')}
    ${kpi('o','Value Accuracy',P(a.val),'Akurasi nilai persediaan (SO APPROVED)')}
    ${kpi('a','SO Approved',`${n(k.so_approved)} / ${n(tot)}`,`${n(k.so_submitted)} SO menunggu validasi SPV`)}
@@ -406,7 +415,7 @@ async function showDashboard(){
   <div class="vols">
    ${vol('o','Total SO',n(tot),'SO pada periode & filter')}
    ${vol('g','Completion',P(tot?fin/tot:null),`${n(fin)} SO selesai (SUBMITTED/APPROVED)`)}
-   ${vol('o','SKU Counted',n(k.sku_done),'Total SKU pada SO yang selesai')}
+   ${vol('o','Item Counted',n(k.sku_done),'Total Item pada SO yang selesai')}
    ${vol('a','Net Variance Qty',signed(k.net_qty_diff),'Actual Qty − System Qty')}
   </div>
   <div class="sec-title">Financial & Risiko</div>
@@ -425,11 +434,11 @@ async function showDashboard(){
  if(d.tab==='acc'){
   const areaList=areaRows(rows);
   body=`<div class="sec-title">Akurasi per Area <small>${escapeHTML(rangeSummary(d.range))}</small></div>
-  <div class="tablewrap"><table class="fit"><thead><tr><th>Area</th><th class="num">Toko</th><th>SPV</th><th class="num">SO</th><th class="num">Approved</th><th class="num">SKU Accuracy</th><th class="num">Qty Accuracy</th><th class="num">Value Accuracy</th></tr></thead><tbody>
+  <div class="tablewrap"><table class="fit"><thead><tr><th>Area</th><th class="num">Toko</th><th>SPV</th><th class="num">SO</th><th class="num">Approved</th><th class="num">Akurasi Item</th><th class="num">Qty Accuracy</th><th class="num">Value Accuracy</th></tr></thead><tbody>
   ${areaList.map(m=>{const x=accuracyOf({appr_total:m.appr_total,appr_tally:m.appr_tally,appr_sys_qty:m.appr_sys_qty,appr_abs_qty:m.appr_abs_qty,appr_sys_value:m.appr_sys_value,appr_abs_value:m.appr_abs_value});return `<tr><td><b>${escapeHTML(m.area)}</b></td><td class="num">${n(m.stores)}</td><td>${escapeHTML([...m.spv].join(', ')||'—')}</td><td class="num">${n(m.so_total)}</td><td class="num">${n(m.so_approved)}</td><td class="num">${P(x.sku)}${barHTML(x.sku)}</td><td class="num">${P(x.qty)}</td><td class="num">${P(x.val)}</td></tr>`}).join('')||'<tr><td colspan="8" class="empty">Belum ada data pada periode ini.</td></tr>'}
   </tbody></table></div>
   <div class="sec-title">Akurasi per Toko</div>
-  <div class="tablewrap"><table class="fit"><thead><tr><th>Toko</th><th>Area</th><th>SPV</th><th class="num">SO</th><th class="num">Approved</th><th class="num">SKU Accuracy</th><th class="num">Qty Accuracy</th><th class="num">Value Accuracy</th><th class="num">Net Qty</th><th class="num">Value Loss</th></tr></thead><tbody>${analyticsRows(rows)||'<tr><td colspan="10" class="empty">Belum ada data pada periode ini.</td></tr>'}</tbody></table></div>
+  <div class="tablewrap"><table class="fit"><thead><tr><th>Toko</th><th>Area</th><th>SPV</th><th class="num">SO</th><th class="num">Approved</th><th class="num">Akurasi Item</th><th class="num">Qty Accuracy</th><th class="num">Value Accuracy</th><th class="num">Net Qty</th><th class="num">Value Loss</th></tr></thead><tbody>${analyticsRows(rows)||'<tr><td colspan="10" class="empty">Belum ada data pada periode ini.</td></tr>'}</tbody></table></div>
   <p class="footerhint">Akurasi hanya dihitung dari SO berstatus APPROVED pada periode yang dipilih. SO yang sudah dibersihkan tetap dihitung dari ringkasannya.</p>`;
  }
  if(d.tab==='wf'){
@@ -494,15 +503,15 @@ function normHead(s){return String(s||'').trim().toLowerCase().replace(/[\s_-]+/
 function importRows(csv){
  const parsed=parseCSV(csv);const headers=parsed.shift().map(normHead);
  const index=names=>names.map(normHead).map(v=>headers.indexOf(v)).find(i=>i>=0)??-1;
- const cSku=index(['SKU','Item SKU','Kode SKU','Kode Item']);const cName=index(['NAME_VARIANT','Name - Variant','Name Variant','Item Name','Nama Item']);const cEnd=index(['ENDING','Ending Inventory','Qty','Stok Akhir']);const cCat=index(['CATEGORY','Category Name','Category']);const cRetail=index(['Harga Retail','Retail Price','Harga_Retail','RETAIL']);const cCost=index(['COST','HPP','Unit Cost','Unit_Cost']);
- if(cName<0||cEnd<0)throw Error('Header CSV harus memuat Name - Variant (atau NAME_VARIANT) dan Ending. SKU boleh kosong hanya jika tersedia pada Item Library di database.');
+ const cName=index(['NAME_VARIANT','Name - Variant','Name Variant','Item Name','Nama Item']);const cEnd=index(['ENDING','Ending Inventory','Qty','Stok Akhir']);const cCat=index(['CATEGORY','Category Name','Category']);const cRetail=index(['Harga Retail','Retail Price','Harga_Retail','RETAIL']);const cCost=index(['COST','HPP','Unit Cost','Unit_Cost']);
+ if(cName<0||cEnd<0)throw Error('File harus memuat Name - Variant (atau Item Name) dan Ending. Kolom SKU tidak diperlukan.');
  const body=parsed.filter(v=>!(v[cEnd]||'').trim().startsWith('-'));
- if(body.length>10000)throw Error('Maksimal 10.000 SKU per upload.');
+ if(body.length>10000)throw Error('Maksimal 10.000 item per upload.');
  const seen=new Set();
- const out=body.map((v,i)=>{const rawSku=cSku>=0?(v[cSku]||''):'';const sku=rawSku.trim().toUpperCase(),name=(v[cName]||'').trim(),ending=(v[cEnd]||'').trim(),cost=cCost>=0?(v[cCost]||'0').trim():'0',retail=cRetail>=0?((v[cRetail]||'').trim()||'0'):'0';
-  if(!name||!/^\d+$/.test(ending)||!/^\d+(\.\d{1,2})?$/.test(cost)||!/^\d+(\.\d{1,2})?$/.test(retail))throw Error(`Baris ${i+2} tidak valid: SKU/nama/Ending/Cost.`);
-  const key=sku||'#NAME:'+name.toUpperCase();if(seen.has(key))throw Error('SKU / nama duplikat: '+(sku||name));seen.add(key);
-  return{sku,name,category:cCat>=0?(v[cCat]||'').trim():'',ending:Number(ending),cost:Number(cost),retail:Number(retail)};});
+ const out=body.map((v,i)=>{const name=(v[cName]||'').trim(),ending=(v[cEnd]||'').trim(),cost=cCost>=0?(v[cCost]||'0').trim():'0',retail=cRetail>=0?((v[cRetail]||'').trim()||'0'):'0';
+  if(!name||!/^\d+$/.test(ending)||!/^\d+(\.\d{1,2})?$/.test(cost)||!/^\d+(\.\d{1,2})?$/.test(retail))throw Error(`Baris ${i+2} tidak valid: Nama Item/Ending/Cost.`);
+  const key=name.toUpperCase().replace(/\s+/g,' ').trim();if(seen.has(key))throw Error('Nama Item duplikat: '+name);seen.add(key);
+  return{name,category:cCat>=0?(v[cCat]||'').trim():'',ending:Number(ending),cost:Number(cost),retail:Number(retail)};});
  out.skipped=parsed.length-body.length;return out;
 }
 
@@ -553,7 +562,7 @@ async function showSchedule(){
  <div class="note info">${isAdmin()||state.me.role==='spv'?'Jadwal per toko. SO yang sudah APPROVED tampil sesuai rentang tanggal yang dipilih.':'Jadwal SO toko Anda. Buat, ubah, atau hapus jadwal yang belum diproses, lalu klik Proses untuk memulai SO.'}</div>
  ${groups.size?[...groups.values()].map(g=>{const run=g.rows.filter(r=>['COUNTING','RECOUNT'].includes(r.status)).length;const busy=g.rows.some(r=>['COUNTING','RECOUNT','SUBMITTED'].includes(r.status));const code=g.rows[0].store_code;const isOpen=(state.sch.folders||{})[code]??busy;return `<details class="card store-folder" data-code="${escapeHTML(code)}" ${isOpen?'open':''}>
    <summary><span class="sf-name">📁 ${escapeHTML(g.name)}</span><span class="sf-meta">${n(g.rows.length)} SO${run?` · ${n(run)} sedang berjalan`:''}</span></summary>
-   <div class="tablewrap"><table><thead><tr><th>SO</th><th>Tanggal</th><th>PIC</th><th>Status</th><th class="num">SKU</th><th>Action</th></tr></thead><tbody>${g.rows.map(r=>`<tr><td><b class="mono">${escapeHTML(r.no)}</b><br><small class="muted">${r.so_type==='PARTIAL'?'PARTIAL':'GRAND'}${r.start_time?' • '+escapeHTML(r.start_time.slice(0,5)):''}${r.team_map?' • per tim/POS':(r.scope_rule?' • category/warna':'')}</small></td><td>${fmtDate(r.planned_date)}</td><td>${escapeHTML(r.pic||'-')}</td><td>${chip(r.status)}</td><td class="num">${n(r.scope_count)}</td><td class="actions">${schActions(r)}</td></tr>`).join('')}</tbody></table></div>
+   <div class="tablewrap"><table><thead><tr><th>SO</th><th>Tanggal</th><th>PIC</th><th>Status</th><th class="num">Item</th><th>Action</th></tr></thead><tbody>${g.rows.map(r=>`<tr><td><b class="mono">${escapeHTML(r.no)}</b><br><small class="muted">${r.so_type==='PARTIAL'?'PARTIAL':'GRAND'}${r.start_time?' • '+escapeHTML(r.start_time.slice(0,5)):''}${r.team_map?' • per tim/POS':(r.scope_rule?' • category/warna':'')}</small></td><td>${fmtDate(r.planned_date)}</td><td>${escapeHTML(r.pic||'-')}</td><td>${chip(r.status)}</td><td class="num">${n(r.scope_count)}</td><td class="actions">${schActions(r)}</td></tr>`).join('')}</tbody></table></div>
   </details>`}).join(''):'<div class="card empty">Belum ada SO pada filter ini.'+' Klik + Partial SO atau + Grand SO untuk membuat jadwal.</div>'}`;
 }
 document.addEventListener('toggle',e=>{const d=e.target;if(d&&d.classList&&d.classList.contains('store-folder')&&d.dataset.code){state.sch.folders=state.sch.folders||{};state.sch.folders[d.dataset.code]=d.open}},true);
@@ -654,7 +663,7 @@ function materialize(b,scope,cat){
 function ownerKey(owner,cat){return owner+'|'+cat}
 function colorPanelHTML(owner,cat,set,list){
  if(!list)return '<div class="color-panel small muted">Memuat warna…</div>';
- if(!list.length)return '<div class="color-panel small muted">Tidak ada SKU pada category ini.</div>';
+ if(!list.length)return '<div class="color-panel small muted">Tidak ada item pada category ini.</div>';
  const count=set?set.size:0;
  const head=`<div class="cp-head"><span class="small"><b>Warna ${escapeHTML(cat)}</b> — ${n(count)} dari ${n(list.length)} dipilih</span>
   <span class="cp-actions"><button class="link-btn" data-act="b-color-all" data-owner="${escapeHTML(owner)}" data-cat="${escapeHTML(cat)}">Pilih semua</button><button class="link-btn muted-link" data-act="b-color-clear" data-owner="${escapeHTML(owner)}" data-cat="${escapeHTML(cat)}">Kosongkan</button></span></div>`;
@@ -667,7 +676,7 @@ function colorPanelHTML(owner,cat,set,list){
 function catBlockHTML(b,owner,cat,scope){
  const on=scope.cats.has(cat);const set=scope.cats.get(cat);const list=b.stats.get(cat);
  let sub;
- if(!on)sub=n(b.catList?.find(c=>c.category===cat)?.count||0)+' SKU';
+ if(!on)sub=n(b.catList?.find(c=>c.category===cat)?.count||0)+' item';
  else if(!list)sub='memuat…';
  else sub=n(set?set.size:0)+' dari '+n(list.length)+' warna';
  return `<div class="cat-block ${on?'open':''}" data-blk="${escapeHTML(ownerKey(owner,cat))}"><label class="cat ${on?'on':''}"><input type="checkbox" data-change="b-cat" data-owner="${escapeHTML(owner)}" value="${escapeHTML(cat)}" ${on?'checked':''}/><span><b>${escapeHTML(cat||'(Tanpa category)')}</b><small>${sub}</small></span></label>${on?colorPanelHTML(owner,cat,set,list):''}</div>`;
@@ -687,7 +696,7 @@ function teamCardsHTML(b){
 }
 function drawSkuChips(){
  const b=state.builder;if(!b)return;
- const box=$('#bSkuChips');if(box)box.innerHTML=[...b.scope.skus].map(s=>`<span class="sku-chip mono">${escapeHTML(s)} <button class="chip-x" data-act="b-sku-del" data-sku="${escapeHTML(s)}" title="Hapus">×</button></span>`).join('')||'<span class="small muted">Belum ada SKU manual.</span>';
+ const box=$('#bSkuChips');if(box)box.innerHTML=[...b.scope.skus].map(s=>`<span class="sku-chip mono">${escapeHTML(s)} <button class="chip-x" data-act="b-sku-del" data-sku="${escapeHTML(s)}" title="Hapus">×</button></span>`).join('')||'<span class="small muted">Belum ada Item manual.</span>';
  const c=$('#bSkuCount');if(c)c.textContent=b.scope.skus.size;
 }
 // Scroll: simpan posisi semua induk scrollable, pulihkan setelah render ulang
@@ -706,11 +715,11 @@ function updateCatSummary(){
  const b=state.builder;if(!b)return;
  const el=$('#catSum');if(!el)return;
  const cats=b.scope.cats.size;const sel=[...b.scope.cats.values()].reduce((a,s)=>a+(s?s.size:0),0);
- el.textContent=`${n(cats)} category dipilih · ${n(sel)} warna · ${n(b.scope.skus.size)} SKU manual`;
+ el.textContent=`${n(cats)} category dipilih · ${n(sel)} warna · ${n(b.scope.skus.size)} Item manual`;
 }
 async function renderScope(){
  const b=state.builder;if(!b)return;const box=$('#bScope');if(!box)return;
- const modes=b.type==='GRAND'?[['ALL','Seluruh SKU'],['SCOPE','Category & Warna'],['TEAMS','Bagi per Tim / POS']]:[['SCOPE','Category & Warna'],['TEAMS','Bagi per Tim / POS']];
+ const modes=b.type==='GRAND'?[['ALL','Seluruh Item'],['SCOPE','Category & Warna'],['TEAMS','Bagi per Tim / POS']]:[['SCOPE','Category & Warna'],['TEAMS','Bagi per Tim / POS']];
  if(!modes.some(m=>m[0]===b.scopeMode))b.scopeMode=modes[0][0];
  if(!b.catList){b.catList=await rpc('categories',{p_store:b.store})}
  if(state.builder!==b)return;
@@ -722,23 +731,23 @@ async function renderScope(){
  const modeSeg=`<div class="field"><span>Cara SO *</span><div class="seg">${modes.map(([v,l])=>`<button class="${b.scopeMode===v?'on':''}" data-act="b-mode" data-v="${v}">${l}</button>`).join('')}</div></div>`;
  let body='';
  if(b.scopeMode==='ALL'){
-  body=`<div class="scope-box"><b>Scope: seluruh SKU inventory toko</b><p class="small muted">Stok sistem diambil saat SO dimulai (Proses) dan ikut diperbarui jika inventory di-upload ulang, sampai SO di-SUBMIT store. Setelah SUBMIT, system dikunci. Pilih Category & Warna atau Bagi per Tim / POS bila SO hanya sebagian.</p></div>`;
+  body=`<div class="scope-box"><b>Scope: seluruh item inventory toko</b><p class="small muted">Stok sistem diambil saat SO dimulai (Proses) dan ikut diperbarui jika inventory di-upload ulang, sampai SO di-SUBMIT store. Setelah SUBMIT, system dikunci. Pilih Category & Warna atau Bagi per Tim / POS bila SO hanya sebagian.</p></div>`;
  }else if(b.scopeMode==='SCOPE'){
   body=`<div class="scope-box">
     <div class="scope-head"><b>Category & Warna</b>
      <span class="cp-actions"><button class="link-btn" data-act="b-cat-all">Pilih semua category</button><button class="link-btn muted-link" data-act="b-cat-clear">Kosongkan semua</button></span></div>
-    <p class="small muted">Centang category, lalu pilih warna satu per satu. Gunakan "Kosongkan" untuk mulai dari nol. Warna dengan SKU terbanyak tampil paling atas.</p>
+    <p class="small muted">Centang category, lalu pilih warna satu per satu. Gunakan "Kosongkan" untuk mulai dari nol. Warna dengan item terbanyak tampil paling atas.</p>
     <div class="small" id="catSum"></div>
     <div class="cat-grid">${catBlocksHTML(b,'main',b.scope)}</div>
-    <div class="scope-head"><b>SKU manual (opsional)</b></div>
+    <div class="scope-head"><b>Item manual (opsional)</b></div>
     <div class="sku-cloud" id="bSkuChips"></div>
-    <input id="bSearch" class="input" value="${escapeHTML(b.skuQ)}" placeholder="Cari SKU / nama produk, lalu Enter" data-change="b-search"/>
+    <input id="bSearch" class="input" value="${escapeHTML(b.skuQ)}" placeholder="Cari nama produk, lalu Enter" data-change="b-search"/>
     <div id="bSkuList" class="sku-list"></div>
-    <div class="small muted">SKU manual dipilih: <b id="bSkuCount">${b.scope.skus.size}</b></div>
+    <div class="small muted">Item manual dipilih: <b id="bSkuCount">${b.scope.skus.size}</b></div>
    </div>`;
  }else{
   body=`<div class="scope-box">
-    <div class="scope-head"><b>Pembagian Tim / POS</b><span class="small muted">Setiap SKU masuk ke tim pertama yang category/warnanya cocok. SKU di luar semua tim tidak di-SO.</span></div>
+    <div class="scope-head"><b>Pembagian Tim / POS</b><span class="small muted">Setiap item masuk ke tim pertama yang category/warnanya cocok. Item di luar semua tim tidak di-SO.</span></div>
     <div class="teams">${teamCardsHTML(b)}</div>
     <button class="btn outline" data-act="b-team-add">+ Tambah Tim / POS</button>
    </div>`;
@@ -778,7 +787,7 @@ CHG['b-search']=async el=>{
  const d=await rpc('sku_coverage',{p_store:b.store,p_filter:'ALL',p_search:b.skuQ,p_offset:0,p_limit:50});
  const box=$('#bSkuList');if(!box||state.builder!==b)return;
  box.innerHTML=(d.items||[]).map(x=>{const sel=b.scope.skus.has(x.sku);const dis=!x.eligible&&!sel;
-   return `<label class="sku-row ${dis?'locked':''}"><input type="checkbox" data-change="b-sku" value="${escapeHTML(x.sku)}" ${sel?'checked':''} ${dis?'disabled':''}/><span class="mono">${escapeHTML(x.sku)}</span><small>${escapeHTML(x.name)}</small><span class="ratio ${x.ratio?'r1':'r0'}">${n(x.ratio)}x</span><em>${dis?'Terkunci':'Bisa'}</em></label>`}).join('')||'<div class="empty small">Tidak ada SKU yang cocok.</div>';
+   return `<label class="sku-row ${dis?'locked':''}"><input type="checkbox" data-change="b-sku" value="${escapeHTML(x.sku)}" ${sel?'checked':''} ${dis?'disabled':''}/><span class="sku-name-pick">${escapeHTML(x.name)}</span><span class="ratio ${x.ratio?'r1':'r0'}">${n(x.ratio)}x</span><em>${dis?'Terkunci':'Bisa'}</em></label>`}).join('')||'<div class="empty small">Tidak ada item yang cocok.</div>';
 };
 CHG['b-team-name']=el=>{const b=state.builder;const t=b&&b.teams[Number(el.dataset.idx)];if(!t)return;t.name=el.value;schedulePreview()};
 ACT['b-team-add']=async()=>{const b=state.builder;if(!b)return;b.teams.push({name:'POS '+(b.teams.length+1),scope:newScope()});await renderScope()};
@@ -802,12 +811,12 @@ async function updatePreview(){
   }
  }catch(ex){err=ex.message}
  if(state.builder!==b||!$('#bPreview'))return;
- if(teamRes){teamRes.teams.forEach((t,i)=>{const el=$('#tc'+i);if(el)el.textContent=`${n(t.count)} SKU`})}
- const desc=b.scopeMode==='ALL'?'Seluruh inventory toko':b.scopeMode==='SCOPE'?`${n(b.scope.cats.size)} category • ${n(b.scope.skus.size)} SKU manual`:`${n(b.teams.length)} tim/POS`;
+ if(teamRes){teamRes.teams.forEach((t,i)=>{const el=$('#tc'+i);if(el)el.textContent=`${n(t.count)} item`})}
+ const desc=b.scopeMode==='ALL'?'Seluruh inventory toko':b.scopeMode==='SCOPE'?`${n(b.scope.cats.size)} category • ${n(b.scope.skus.size)} Item manual`:`${n(b.teams.length)} tim/POS`;
  $('#bPreview').innerHTML=`<div class="prev">
    <div class="prev-stats"><div><small>Toko</small><b>${escapeHTML(labelStore(store))}</b></div><div><small>Jenis</small><b>${b.type==='GRAND'?'Grand SO':'Partial SO'}</b></div><div><small>Tanggal</small><b>${fmtDate(date)}</b></div><div><small>Jam</small><b>${start||'—'}${end?' – '+end:''}</b></div></div>
-   <div class="prev-big"><small>SKU yang di-SO</small><b>${n(info.count)}</b><span>${desc}</span></div>
-   ${b.scopeMode==='TEAMS'&&teamRes?`<div class="team-summary">${teamRes.teams.map(t=>`<div><span>${escapeHTML(t.name)}</span><b>${n(t.count)} SKU</b></div>`).join('')}</div>`:''}
+   <div class="prev-big"><small>item yang di-SO</small><b>${n(info.count)}</b><span>${desc}</span></div>
+   ${b.scopeMode==='TEAMS'&&teamRes?`<div class="team-summary">${teamRes.teams.map(t=>`<div><span>${escapeHTML(t.name)}</span><b>${n(t.count)} item</b></div>`).join('')}</div>`:''}
    ${err?`<div class="note warning">${escapeHTML(err)}</div>`:''}
    ${info.sample?.length?`<div class="sku-cloud">${info.sample.map(s=>`<span class="sku-chip mono">${escapeHTML(s)}</span>`).join('')}${info.count>info.sample.length?`<span class="small muted">+${n(info.count-info.sample.length)} lainnya</span>`:''}</div>`:''}
    <div class="note info small">Stok sistem diambil saat SO dimulai (Proses). Jika inventory di-upload ulang, system ikut diperbarui sampai SO di-SUBMIT. Setelah SUBMIT, system dikunci dan hanya bisa diubah SPV/Admin di menu Validasi.</div>
@@ -827,7 +836,7 @@ ACT['b-save']=async()=>{
  }
  if(b.scopeMode==='SCOPE'){
   const r=ruleOf(b.scope,b.stats);
-  if(isEmptyRule(r))throw Error(b.type==='PARTIAL'?'Pilih minimal satu category, warna, atau SKU untuk Partial SO.':'Pilih category/warna, atau pilih Seluruh SKU.');
+  if(isEmptyRule(r))throw Error(b.type==='PARTIAL'?'Pilih minimal satu category, warna, atau item untuk Partial SO.':'Pilih category/warna, atau pilih Seluruh Item.');
   p_rule=r;
  }else if(b.scopeMode==='TEAMS'){
   if(!b.teams.length)throw Error('Tambahkan minimal satu tim/POS.');
@@ -836,7 +845,7 @@ ACT['b-save']=async()=>{
  if(b.mode==='create'){
   if(!confirm(`Simpan jadwal ${b.type==='GRAND'?'Grand':'Partial'} SO untuk ${labelStore(store)} pada ${date}?`))return;
   const out=await rpc('schedule_create',{p_store:store,p_type:b.type,p_date:date,p_start:start,p_end:end,p_notes:notes,p_rule,p_teams});
-  toast(`Jadwal dibuat: ${n(out.scope_count)} SKU`);
+  toast(`Jadwal dibuat: ${n(out.scope_count)} item`);
  }else{
   await rpc('schedule_update',{p_cycle:b.cycleId,p_type:b.type,p_date:date,p_start:start,p_end:end,p_notes:notes,p_rule,p_teams});
   toast('Jadwal diperbarui');
@@ -919,7 +928,7 @@ function drawCountRows(){
  const c=state.count;const q=(c.listQ||'').trim().toLowerCase();
  const rows=c.rows.filter(r=>!q||(r.no+' '+r.store_name).toLowerCase().includes(q));
  const body=$('#cBody');if(!body)return;
- body.innerHTML=monthFolders('count',rows,r=>mfKeyDate(r.planned_date),g=>`<div class="tablewrap"><table><thead><tr><th></th><th>SO Number</th><th>Store</th><th>Tanggal</th><th>Tipe</th><th>Status</th><th class="num">SKU</th><th>Action</th></tr></thead><tbody>${g.map(cntListRowHTML).join('')}</tbody></table></div>`,g=>`${n(g.length)} SO`)||'<div class="empty">Tidak ada SO yang perlu dihitung.</div>';
+ body.innerHTML=monthFolders('count',rows,r=>mfKeyDate(r.planned_date),g=>`<div class="tablewrap"><table><thead><tr><th></th><th>SO Number</th><th>Store</th><th>Tanggal</th><th>Tipe</th><th>Status</th><th class="num">Item</th><th>Action</th></tr></thead><tbody>${g.map(cntListRowHTML).join('')}</tbody></table></div>`,g=>`${n(g.length)} SO`)||'<div class="empty">Tidak ada SO yang perlu dihitung.</div>';
  const lbl=$('#cSelCount');if(lbl)lbl.textContent=`${c.sel.size} dipilih`;
 }
 CHG['c-chk']=el=>{const c=state.count;el.checked?c.sel.add(el.value):c.sel.delete(el.value);const lbl=$('#cSelCount');if(lbl)lbl.textContent=`${c.sel.size} dipilih`};
@@ -935,11 +944,11 @@ function uploadPanelHTML(s){
  return `<details class="card up-panel" id="upPanel" open><summary><b>⬆ Upload Inventory</b><span class="muted small">Ganti inventory aktif toko. SO yang sudah SUBMITTED tidak ikut berubah.</span></summary>
   <div class="up-body">
    ${canManage()?`<select class="input select" data-change="up-store">${storeOptions(state.store,false)}</select>`:`<span class="chip blue"><i></i>${escapeHTML(labelStore(state.store))}</span>`}
-   <label class="dropzone"><b>⬆ Pilih File CSV Inventory Summary</b><small>Name - Variant, Category, Ending. SKU dicocokkan ke Item Library; item tanpa SKU diberi ID PENDING dan ditampilkan sebelum konfirmasi. Cost dan Harga Retail opsional.</small><input type="file" id="fileInput" accept=".csv,text/csv" data-change="file-pick"/></label>
+   <label class="dropzone"><b>⬆ Pilih File CSV Inventory Summary</b><small>Name - Variant, Category, Ending. Pencocokan inventory menggunakan Nama Item. Kolom SKU di file tidak diperlukan. Cost dan Harga Retail opsional.</small><input type="file" id="fileInput" accept=".csv,text/csv" data-change="file-pick"/></label>
    <div id="fileInfo" class="small muted">Belum ada file dipilih.</div>
    <div id="retailPreview"></div>
    <div class="row">${btn('Upload & Ganti Inventory','do-upload','primary')}</div>
-   <p class="footerhint">Inventory aktif sekarang: ${n(s?.inventory_count||0)} SKU. Maksimal 10.000 SKU per file.</p>
+   <p class="footerhint">Inventory aktif sekarang: ${n(s?.inventory_count||0)} item. Maksimal 10.000 item per file.</p>
   </div></details>`;
 }
 async function loadCount(cid){
@@ -953,14 +962,14 @@ async function loadCount(cid){
  const edit=data.status==='COUNTING'||data.status==='RECOUNT';
  const keepUp=$('#upPanel');
  const back=state.me.role!=='store'?`<div class="crumb"><button class="btn ghost" data-act="count-back">← Daftar SO</button><span class="muted small">${escapeHTML(labelStore(state.store))}</span></div>`:'';
- const options=[['ALL','Semua SKU'],['PENDING','Belum Lengkap'],['DONE','Sudah Lengkap'],['SELISIH','Status Selisih'],['TALLY','Status Tally']].map(([v,l])=>`<option value="${v}" ${v===q.filter?'selected':''}>${l}</option>`).join('');
+ const options=[['ALL','Semua Item'],['PENDING','Belum Lengkap'],['DONE','Sudah Lengkap'],['SELISIH','Status Selisih'],['TALLY','Status Tally']].map(([v,l])=>`<option value="${v}" ${v===q.filter?'selected':''}>${l}</option>`).join('');
  const teams=data.teams||[];
  const teamSel=teams.length?`<select id="countTeam" class="input" data-change="count-team"><option value="">Semua Tim / POS</option>${teams.map(t=>`<option value="${escapeHTML(t)}" ${t===q.team?'selected':''}>${escapeHTML(t)}</option>`).join('')}</select>`:'';
  $('#content').innerHTML=`${back}${cycleSwitchHTML()}<div id="upSlot"></div><div class="card">
   <div class="card-head"><div class="row"><h3>SO Berjalan</h3>${chip(data.status)}</div>${edit?btn('Submit Counting','count-submit','dark'):''}</div>
-  <div class="toolbar"><input id="countSearch" class="input grow" placeholder="Cari SKU / nama produk" value="${escapeHTML(q.search)}"/>${teamSel}<select id="countFilter" class="input" data-change="count-filter-chg">${options}</select>${btn('Cari','count-find','outline')}${btn('📷 Scan','scan-count','outline')}${rstHTML('count')}</div>
-  <div class="tablewrap"><table id="countTable" class="count-table"><colgroup><col class="c-sku"/><col class="c-item"/><col class="c-pos"/><col class="c-pos"/><col class="c-pos"/><col class="c-pos"/><col class="c-total"/><col class="c-reason"/><col class="c-status"/></colgroup><thead><tr><th class="sku-head">SKU</th><th class="item-head">Nama Item & Warna</th>${POS.map(([,l])=>`<th class="num">${l}</th>`).join('')}<th class="num">Total</th><th>Alasan (wajib jika selisih)</th><th>Status</th></tr></thead><tbody>${data.items.length?data.items.map(x=>countRowHTML(x,edit)).join(''):'<tr><td colspan="9" class="empty">Tidak ada SKU</td></tr>'}</tbody></table></div>
-  <div class="pager"><span class="small muted">${n(data.total_filtered?q.offset+1:0)}–${n(Math.min(q.offset+50,data.total_filtered))} dari ${n(data.total_filtered)} SKU</span><div class="row">${btn('← Sebelumnya','count-prev','outline')}${btn('Berikutnya →','count-next','outline')}</div></div>
+  <div class="toolbar"><input id="countSearch" class="input grow" placeholder="Cari nama produk" value="${escapeHTML(q.search)}"/>${teamSel}<select id="countFilter" class="input" data-change="count-filter-chg">${options}</select>${btn('Cari','count-find','outline')}${btn('📷 Scan','scan-count','outline')}${rstHTML('count')}</div>
+  <div class="tablewrap"><table id="countTable" class="count-table"><colgroup><col class="c-item"/><col class="c-pos"/><col class="c-pos"/><col class="c-pos"/><col class="c-pos"/><col class="c-total"/><col class="c-reason"/><col class="c-status"/></colgroup><thead><tr><th class="item-head">Nama Item & Warna</th>${POS.map(([,l])=>`<th class="num">${l}</th>`).join('')}<th class="num">Total</th><th>Alasan (wajib jika selisih)</th><th>Status</th></tr></thead><tbody>${data.items.length?data.items.map(x=>countRowHTML(x,edit)).join(''):'<tr><td colspan="8" class="empty">Tidak ada item</td></tr>'}</tbody></table></div>
+  <div class="pager"><span class="small muted">${n(data.total_filtered?q.offset+1:0)}–${n(Math.min(q.offset+50,data.total_filtered))} dari ${n(data.total_filtered)} item</span><div class="row">${btn('← Sebelumnya','count-prev','outline')}${btn('Berikutnya →','count-next','outline')}</div></div>
   <div class="footerhint">Input tersimpan otomatis per baris. Tekan Submit Counting untuk mengirim semua hasil ke validasi SPV.</div>
  </div>`;
  const slot=$('#upSlot');
@@ -974,18 +983,10 @@ function statusCell(status,reason){
  if(status==='SELISIH')return chip('SELISIH')+(warn?'<small class="need-txt">wajib alasan</small>':'');
  return chip('BELUM','BELUM');
 }
-// Kolom SKU sendiri di depan Nama Item untuk Counting & Validasi SPV.
-// SKU tidak ditemukan diberi penanda, bukan menampilkan Item Name sebagai kode resmi.
-function skuTableCell(x){
- const sku=String(x.sku||'').trim(), name=String(x.name||'').trim();
- const isPending=sku.toUpperCase().startsWith('PENDING-');
- const missing=!sku || sku.toUpperCase()===name.toUpperCase() || isPending;
- return `<td class="sku-col">${missing?`<span class="sku-missing" title="${isPending?`ID sementara: ${escapeHTML(sku)}. Lengkapi Item Library.`:'SKU lama belum terpetakan ke Item Library.'}">SKU PENDING</span>`:`<span class="sku-code" title="${escapeHTML(sku)}">${escapeHTML(sku)}</span>`}</td>`;
-}
+// Legacy RPC parameter p_sku holds normalized Item Name after migration 032.
 function countRowHTML(x,edit){
  const needsReason=x.status==='SELISIH'&&!(x.reason||'').trim();
  return `<tr data-sku="${escapeHTML(x.sku)}">
-  ${skuTableCell(x)}
   <td class="nm"><div class="nm-sub">${nameBadge(x.name,x.category)}${x.team?`<span class="team-tag">${escapeHTML(x.team)}</span>`:''}</div></td>
   ${POS.map(([k,l])=>`<td><div class="pos-wrap"><input class="input count-num pos" data-change="count-row" data-pos="${k}" type="number" min="0" step="1" inputmode="numeric" aria-label="${l}" ${edit?'':'disabled'} value="${x[k]??''}"/>${edit?`<button class="calc-btn" data-act="calc-open" data-label="${escapeHTML(l)}" title="Kalkulator ${l}">🧮</button>`:''}</div></td>`).join('')}
   <td class="num total">${x.total==null?'—':n(x.total)}</td>
@@ -1086,8 +1087,8 @@ ACT['count-submit']=async()=>{
  await saveCountPage();const cid=state.count.data.cycle_id;
  const [all,pend]=await Promise.all([rpc('count_page',{p_cycle:cid,p_offset:0,p_limit:1,p_search:'',p_filter:'ALL'}),rpc('count_page',{p_cycle:cid,p_offset:0,p_limit:1,p_search:'',p_filter:'PENDING'})]);
  const total=all.total_filtered,pending=pend.total_filtered;
- if(pending>0)throw Error(`${n(pending)} SKU belum lengkap. Isi keempat posisi semua SKU sebelum submit.`);
- if(!confirm(`Ringkasan counting:\n• Total SKU: ${n(total)}\n• Lengkap: ${n(total)}\n\nSKU berstatus Selisih wajib sudah berisi alasan. Setelah submit, counting dikunci. Lanjutkan?`))return;
+ if(pending>0)throw Error(`${n(pending)} item belum lengkap. Isi keempat posisi semua item sebelum submit.`);
+ if(!confirm(`Ringkasan counting:\n• Total Item: ${n(total)}\n• Lengkap: ${n(total)}\n\nItem berstatus Selisih wajib sudah berisi alasan. Setelah submit, counting dikunci. Lanjutkan?`))return;
  await rpc('submit',{p_cycle:cid});clearCountDraft(cid,Object.keys(readCountDraft(cid)));
  toast('Counting SUBMITTED. Menunggu validasi SPV.');
  state.count.open=false;
@@ -1293,7 +1294,7 @@ function drawValRows(){
  const rows=valFiltered();
  const body=$('#vBody');if(!body)return;
  const valRowHTML=r=>`<tr><td><input type="checkbox" data-change="val-chk" value="${r.id}" ${v.sel.has(r.id)?'checked':''}/></td><td><b class="mono">${escapeHTML(r.no)}</b><br><small class="muted">${r.so_type==='PARTIAL'?'PARTIAL':'GRAND'}</small></td><td>${escapeHTML(r.store_name)}</td><td>${fmtDate(r.planned_date)}</td><td>${escapeHTML(r.pic||'-')}</td><td>${chip(r.status)}</td><td class="num">${n(r.scope_count)}</td><td class="num"><b>${P(valAcc(r))}</b><br><small class="muted">${n(r.variance||0)} variance</small></td><td>${btn('Validasi','val-open','primary',{id:r.id,store:r.store_code})}</td></tr>`;
- body.innerHTML=monthFolders('val',rows,r=>mfKeyDate(r.planned_date),g=>`<div class="tablewrap"><table><thead><tr><th></th><th>SO</th><th>Store</th><th>Tanggal</th><th>PIC</th><th>Status</th><th class="num">SKU</th><th class="num">SKU Accuracy</th><th>Action</th></tr></thead><tbody>${g.map(valRowHTML).join('')}</tbody></table></div>`,g=>`${n(g.length)} SO`)||'<div class="empty">Belum ada SO yang menunggu validasi.</div>';
+ body.innerHTML=monthFolders('val',rows,r=>mfKeyDate(r.planned_date),g=>`<div class="tablewrap"><table><thead><tr><th></th><th>SO</th><th>Store</th><th>Tanggal</th><th>PIC</th><th>Status</th><th class="num">Item</th><th class="num">Akurasi Item</th><th>Action</th></tr></thead><tbody>${g.map(valRowHTML).join('')}</tbody></table></div>`,g=>`${n(g.length)} SO`)||'<div class="empty">Belum ada SO yang menunggu validasi.</div>';
 }
 CHG['v-status']=el=>{state.validation.status=el.value;drawValRows()};
 ACT['val-open']=async el=>{state.page='validation';const v=state.validation;v.cycle=el.dataset.id;v.open=true;v.offset=0;v.search='';v.filter='VARIANCE';state.store=el.dataset.store||state.store;await render()};
@@ -1315,7 +1316,6 @@ async function loadValidation(){
  const editable=st==='SUBMITTED';
  const noBA=st==='APPROVED'&&(sum.total_skus||0)>0&&sum.variance_skus===0&&sum.missing_skus===0;
  const rowHTML=x=>{const reason=x.spv_note||x.store_note||'';const delta=x.delta==null?'—':signed(x.delta);return `<tr data-sku="${escapeHTML(x.sku)}">
-   ${skuTableCell(x)}
    <td class="nm"><div class="nm-sub">${nameBadge(x.name,x.category)}${x.team?`<span class="team-tag">${escapeHTML(x.team)}</span>`:''}</div></td>
    ${editable
      ?`<td class="num sys-cell"><input class="input count-num" data-change="val-field" data-f="system" type="number" min="0" step="1" inputmode="numeric" value="${x.system??''}"/></td>`
@@ -1327,21 +1327,21 @@ async function loadValidation(){
    <td class="st-cell">${statusCell(x.status,reason)}<span class="delta num">${delta}</span></td>
    <td><input class="input reason-in" data-change="val-field" data-f="reason" maxlength="500" placeholder="Alasan" value="${escapeHTML(reason)}" ${editable?'':'disabled'}/></td></tr>`};
  $('#content').innerHTML=`<div class="crumb"><button class="btn ghost" data-act="val-back">← Daftar SO</button><span class="muted small">${escapeHTML(labelStore(state.store)||'')}</span></div>
- <div class="mini-row">${mini('','Total SKU',n(sum.total_skus),'Seluruh SKU pada SO')}${mini('o','Variance',n(variance),'SKU selisih')}${mini('g','SKU Accuracy',P(acc),'tally / (tally + variance)')}${mini('a','Belum Lengkap',n(sum.missing_skus),'Posisi belum lengkap')}${mini('r','Blokir Approve',n(sum.blocking_skus),'Approve diblokir bila > 0')}</div>
- ${(sum.blocking_skus||0)>0?`<div class="note warning">${n(sum.blocking_skus)} SKU belum lengkap atau selisih belum beralasan. Approve diblokir sampai diperbaiki.</div>`:''}
+ <div class="mini-row">${mini('','Total Item',n(sum.total_skus),'Seluruh item dalam SO')}${mini('o','Variance',n(variance),'item selisih')}${mini('g','Akurasi Item',P(acc),'tally / (tally + variance)')}${mini('a','Belum Lengkap',n(sum.missing_skus),'Posisi belum lengkap')}${mini('r','Blokir Approve',n(sum.blocking_skus),'Approve diblokir bila > 0')}</div>
+ ${(sum.blocking_skus||0)>0?`<div class="note warning">${n(sum.blocking_skus)} item belum lengkap atau selisih belum beralasan. Approve diblokir sampai diperbaiki.</div>`:''}
  ${noBA?`<div class="note info">SO ini 100% akurasi tanpa selisih, jadi tidak perlu Berita Acara maupun adjustment. SO dianggap selesai.</div>`:''}
  <div class="card">
   <div class="card-head"><div class="row"><h3>Detail Validasi</h3>${noBA?chip('APPROVED','Selesai · tanpa BA'):chip(st)}</div>
    <div class="row">${editable?btn('Recount','val-recount','danger')+btn('Approve SO','val-approve','primary'):''}${st==='APPROVED'&&!noBA?btn('Buat BA','ba-create','primary',{id:data.cycle_id}):''}${st==='APPROVED'&&!data.archived?btn('Export CSV','val-export','dark'):''}${st==='APPROVED'&&isAdmin()?btn('Hapus Permanen','so-hard-del','danger',{id:data.cycle_id}):''}</div></div>
   <div class="toolbar">
-   <div class="seg" role="tablist" aria-label="Tampilan SKU">
+   <div class="seg" role="tablist" aria-label="Tampilan Item">
     <button class="${v.filter==='VARIANCE'?'on':''}" data-act="val-filter" data-v="VARIANCE">Variance (${n(sum.variance_skus)})</button>
     <button class="${v.filter==='ALL'?'on':''}" data-act="val-filter" data-v="ALL">Semua (${n(sum.total_skus)})</button>
    </div>
    <input id="valSearch" class="input grow" placeholder="Cari item / nama" value="${escapeHTML(v.search)}"/>${btn('Cari','val-find','outline')}${rstHTML('validation')}</div>
-  <div class="tablewrap"><table id="valTable" class="val-table"><colgroup><col class="v-sku"/><col class="v-item"/><col class="v-system"/><col class="v-pos"/><col class="v-pos"/><col class="v-pos"/><col class="v-pos"/><col class="v-total"/><col class="v-status"/><col class="v-reason"/></colgroup><thead><tr><th class="sku-head">SKU</th><th class="item-head">Item & Warna</th><th class="num">System</th>${POS.map(([,l])=>`<th class="num">${l}</th>`).join('')}<th class="num">Total Store</th><th>Status</th><th>Alasan</th></tr></thead><tbody>${data.items.map(rowHTML).join('')||'<tr><td colspan="10" class="empty">Tidak ada SKU.</td></tr>'}</tbody></table></div>
-  <div class="pager"><span class="small muted">${n(data.total_filtered?v.offset+1:0)}–${n(Math.min(v.offset+50,data.total_filtered))} / ${n(data.total_filtered)} SKU</span><div class="row">${btn('← Sebelumnya','val-prev','outline')}${btn('Berikutnya →','val-next','outline')}</div></div>
-  <div class="footerhint">Alasan dan SPV Qty tersimpan otomatis saat diubah. Untuk SKU selisih, alasan wajib diisi sebelum Approve. Jika SPV Qty kosong, sistem memakai total fisik Store.</div>
+  <div class="tablewrap"><table id="valTable" class="val-table"><colgroup><col class="v-item"/><col class="v-system"/><col class="v-pos"/><col class="v-pos"/><col class="v-pos"/><col class="v-pos"/><col class="v-total"/><col class="v-status"/><col class="v-reason"/></colgroup><thead><tr><th class="item-head">Item & Warna</th><th class="num">System</th>${POS.map(([,l])=>`<th class="num">${l}</th>`).join('')}<th class="num">Total Store</th><th>Status</th><th>Alasan</th></tr></thead><tbody>${data.items.map(rowHTML).join('')||'<tr><td colspan="9" class="empty">Tidak ada item.</td></tr>'}</tbody></table></div>
+  <div class="pager"><span class="small muted">${n(data.total_filtered?v.offset+1:0)}–${n(Math.min(v.offset+50,data.total_filtered))} / ${n(data.total_filtered)} item</span><div class="row">${btn('← Sebelumnya','val-prev','outline')}${btn('Berikutnya →','val-next','outline')}</div></div>
+  <div class="footerhint">Alasan dan SPV Qty tersimpan otomatis saat diubah. Untuk item selisih, alasan wajib diisi sebelum Approve. Jika SPV Qty kosong, sistem memakai total fisik Store.</div>
  </div>`;
 renderPresence();
 }
@@ -1353,7 +1353,7 @@ CHG['val-field']=async el=>{
  const sys=val('system');
  const note=tr.querySelector('.reason-in').value.trim();
  tr.classList.add('row-saving');
- try{await rpc('validate_edit',{p_cycle:v.data.cycle_id,p_sku:tr.dataset.sku,p_system:sys,p_display:val('display'),p_reject:val('reject'),p_rak_utama:val('rak_utama'),p_rak_cadangan:val('rak_cadangan'),p_note:note});toast('Tersimpan: '+tr.dataset.sku);await loadValidation()}
+ try{await rpc('validate_edit',{p_cycle:v.data.cycle_id,p_sku:tr.dataset.sku,p_system:sys,p_display:val('display'),p_reject:val('reject'),p_rak_utama:val('rak_utama'),p_rak_cadangan:val('rak_cadangan'),p_note:note});toast('Data item tersimpan');await loadValidation()}
  finally{tr.classList.remove('row-saving')}
 };
 ACT['val-filter']=async el=>{const v=state.validation;v.filter=el.dataset.v;v.offset=0;await loadValidation()};
@@ -1362,17 +1362,17 @@ ACT['val-prev']=async()=>{const v=state.validation;v.offset=Math.max(0,v.offset-
 ACT['val-next']=async()=>{const v=state.validation;if(!v.data||v.offset+50>=v.data.total_filtered)return;v.offset+=50;await loadValidation()};
 ACT['val-approve']=async()=>{const v=state.validation;if(!confirm('Approve SO? Setelah disetujui, hasil akan dikunci.'))return;await rpc('approve',{p_cycle:v.data.cycle_id});toast('SO berhasil APPROVED');await refreshDashboard();await loadValidation()};
 ACT['val-recount']=async()=>{const v=state.validation;const reason=prompt('Alasan Recount (minimal 5 karakter):');if(reason===null)return;await rpc('recount',{p_cycle:v.data.cycle_id,p_reason:reason});toast('SO dikembalikan untuk recount');await refreshDashboard();await loadValidation()};
-ACT['val-export']=async()=>{const v=state.validation;const k=await exportCombined([{id:v.data.cycle_id,no:'SO',store:labelStore(state.store),date:'',type:''}]);toast(`CSV diunduh: ${n(k)} SKU`)};
+ACT['val-export']=async()=>{const v=state.validation;const k=await exportCombined([{id:v.data.cycle_id,no:'SO',store:labelStore(state.store),date:'',type:''}]);toast(`CSV diunduh: ${n(k)} item`)};
 
 /* ---------- Export & Pembersihan Database ---------- */
-const KEYS_EXPORT=['SO_NO','STORE','TANGGAL','TIPE','SKU','NAME_VARIANT','CATEGORY','TEAM','SYSTEM_AT_START','DISPLAY','REJECT','RAK_UTAMA','RAK_CADANGAN','ACTUAL','ADJUSTMENT','UNIT_COST','REASON'];
+const KEYS_EXPORT=['SO_NO','STORE','TANGGAL','TIPE','NAME_VARIANT','CATEGORY','TEAM','SYSTEM_AT_START','DISPLAY','REJECT','RAK_UTAMA','RAK_CADANGAN','ACTUAL','ADJUSTMENT','UNIT_COST','REASON'];
 async function exportCombined(items,opts={}){
  const lines=[];
  for(const it of items){
   const vals=await rpc('export',{p_cycle:it.id});
-  for(const x of vals)lines.push([it.no,it.store,it.date,it.type,x.SKU,x.NAME_VARIANT,x.CATEGORY,x.TEAM,x.SYSTEM_AT_START,x.DISPLAY,x.REJECT,x.RAK_UTAMA,x.RAK_CADANGAN,x.ACTUAL,x.ADJUSTMENT,x.UNIT_COST,x.REASON]);
+  for(const x of vals)lines.push([it.no,it.store,it.date,it.type,x.NAME_VARIANT,x.CATEGORY,x.TEAM,x.SYSTEM_AT_START,x.DISPLAY,x.REJECT,x.RAK_UTAMA,x.RAK_CADANGAN,x.ACTUAL,x.ADJUSTMENT,x.UNIT_COST,x.REASON]);
  }
- if(!lines.length)throw Error('Tidak ada SKU untuk diexport.');
+ if(!lines.length)throw Error('Tidak ada item untuk diekspor.');
  const text='﻿'+[KEYS_EXPORT,...lines].map(row=>row.map(v=>'"'+String(v??'').replaceAll('"','""')+'"').join(',')).join('\r\n');
  const blob=new Blob([text],{type:'text/csv;charset=utf-8'});const u=URL.createObjectURL(blob),a=document.createElement('a');
  const pre=opts.draft?'DRAFT_':'';
@@ -1404,9 +1404,9 @@ async function showExport(){
     <td class="actions">${isAdmin()?btn('Hapus Permanen','so-hard-del','danger',{id:r.id}):''}${r.archived?'<small class="muted">Detail dihapus; ringkasan tersimpan</small>':`${canManage()?btn('Bersihkan','exp-archive','danger',{id:r.id}):''}`}</td></tr>`;
  const mFolders=[...months.keys()].sort().reverse().map(k=>{const g=months.get(k);const left=g.filter(r=>!r.archived).length;const isOpen=(x.months||{})[k]!==false;
    return `<details class="card store-folder month-folder" data-mkey="${k}"${isOpen?' open':''}><summary><span class="sf-name">${mLabel(k)}</span><span class="sf-meta">${n(g.length)} SO · ${n(left)} belum dibersihkan</span></summary>
-   <div class="tablewrap"><table><thead><tr><th></th><th>SO</th><th>Store</th><th>Tanggal</th><th>Tipe</th><th class="num">SKU</th><th class="num">Tally</th><th class="num">Selisih</th><th>Status</th><th>Action</th></tr></thead><tbody>${g.map(expRowHTML).join('')}</tbody></table></div></details>`}).join('');
+   <div class="tablewrap"><table><thead><tr><th></th><th>SO</th><th>Store</th><th>Tanggal</th><th>Tipe</th><th class="num">Item</th><th class="num">Tally</th><th class="num">Selisih</th><th>Status</th><th>Action</th></tr></thead><tbody>${g.map(expRowHTML).join('')}</tbody></table></div></details>`}).join('');
  $('#content').innerHTML=`<div class="db-grid">
-   <div class="db-tile"><small>Baris detail SKU aktif</small><b>${n(stats.active_lines)}</b><span>Sumber beban database</span></div>
+   <div class="db-tile"><small>Baris detail item aktif</small><b>${n(stats.active_lines)}</b><span>Sumber beban database</span></div>
    <div class="db-tile"><small>SO terbuka (belum diarsipkan)</small><b>${n(stats.open_cycles)}</b><span>Termasuk yang masih berjalan</span></div>
    <div class="db-tile"><small>SO sudah dibersihkan</small><b>${n(stats.archived_cycles)}</b><span>Ringkasan tetap tampil di Dashboard</span></div>
    <div class="db-tile"><small>Ukuran detail SO</small><b>${bytes(stats.lines_bytes)}</b><span>Total modul SO ${bytes(stats.total_bytes)}</span></div>
@@ -1415,7 +1415,7 @@ async function showExport(){
   <div class="filters"><select class="input select" data-change="exp-store">${storeOptions(x.store,true)}</select>${rangeControlHTML('exp',x.range)}</div>
   <div class="pills"><span class="pill-stat">APPROVED belum dibersihkan · ${n(openCnt)}</span><span class="pill-stat ok">Sudah dibersihkan · ${n(rows.length-openCnt)}</span></div>
  </div>
- <div class="note info">Alur aman: <b>1)</b> pilih SO → <b>2)</b> Export CSV → <b>3)</b> simpan file ke Drive → <b>4)</b> Bersihkan. Pembersihan menghapus detail SKU dari database; ringkasan selisih dan nilai tetap dipakai Dashboard.</div>
+ <div class="note info">Alur aman: <b>1)</b> pilih SO → <b>2)</b> Export CSV → <b>3)</b> simpan file ke Drive → <b>4)</b> Bersihkan. Pembersihan menghapus detail Item dari database; ringkasan selisih dan nilai tetap dipakai Dashboard.</div>
  <div class="card">
   <div class="bulkbar"><button class="btn outline" data-act="exp-all">Pilih semua</button><button class="btn outline" data-act="exp-none">Kosongkan</button>
    <button class="btn dark" data-act="exp-bulk-csv">⤓ Export CSV terpilih</button>${canManage()?'<button class="btn danger" data-act="exp-bulk-clean">Export & bersihkan terpilih</button>':''}
@@ -1429,19 +1429,19 @@ CHG['exp-chk']=el=>{const x=state.exp;el.checked?x.sel.add(el.value):x.sel.delet
 ACT['exp-all']=async()=>{const x=state.exp;x.sel=new Set(x.rows.filter(r=>!r.archived).map(r=>r.id));await showExport()};
 ACT['exp-none']=async()=>{state.exp.sel=new Set();await showExport()};
 const selectedItems=()=>{const x=state.exp;const items=x.rows.filter(r=>x.sel.has(r.id)&&!r.archived).map(exportItem);if(!items.length)throw Error('Pilih minimal satu SO APPROVED yang belum dibersihkan.');return items};
-ACT['exp-csv']=async el=>{const r=state.exp.rows.find(x=>x.id===el.dataset.id);const k=await exportCombined([exportItem(r)]);toast(`CSV diunduh: ${n(k)} SKU. Simpan ke Drive sebelum dibersihkan.`)};
+ACT['exp-csv']=async el=>{const r=state.exp.rows.find(x=>x.id===el.dataset.id);const k=await exportCombined([exportItem(r)]);toast(`CSV diunduh: ${n(k)} item. Simpan ke Drive sebelum dibersihkan.`)};
 ACT['exp-bulk-csv']=async()=>{const k=await exportCombined(selectedItems());toast(`CSV gabungan diunduh: ${n(k)} baris.`)};
 ACT['exp-bulk-clean']=async()=>{
  const items=selectedItems();
- if(!confirm(`Export ${items.length} SO lalu hapus detail SKU-nya dari database?\n\nPastikan file CSV sudah tersimpan di Drive. Ringkasan tetap tampil di Dashboard.`))return;
+ if(!confirm(`Export ${items.length} SO lalu hapus detail item-nya dari database?\n\nPastikan file CSV sudah tersimpan di Drive. Ringkasan tetap tampil di Dashboard.`))return;
  const k=await exportCombined(items);
  const out=await rpc('archive_cycles',{p_cycles:items.map(i=>i.id)});
- toast(`CSV ${n(k)} baris diunduh. ${n(out.archived)} SO dibersihkan (${n(out.archived_skus)} SKU).`);
+ toast(`CSV ${n(k)} baris diunduh. ${n(out.archived)} SO dibersihkan (${n(out.archived_skus)} item).`);
  state.exp.sel=new Set();await refreshDashboard();await render();
 };
 ACT['exp-archive']=async el=>{
- if(!confirm('Pastikan CSV sudah di-export dan tersimpan di Drive. Detail SKU SO ini akan dihapus dari database (ringkasan tetap disimpan). Lanjutkan?'))return;
- const out=await rpc('archive_cycles',{p_cycles:[el.dataset.id]});toast(`SO dibersihkan: ${n(out.archived_skus)} SKU`);
+ if(!confirm('Pastikan CSV sudah di-export dan tersimpan di Drive. Detail item SO ini akan dihapus dari database (ringkasan tetap disimpan). Lanjutkan?'))return;
+ const out=await rpc('archive_cycles',{p_cycles:[el.dataset.id]});toast(`SO dibersihkan: ${n(out.archived_skus)} item`);
  await refreshDashboard();await render();
 };
 
@@ -1452,11 +1452,11 @@ async function showUpload(){
   <div class="card-head"><div><h3>Upload Inventory</h3><p class="muted small">File CSV mengganti inventory aktif toko. Inventory tidak dikunci: system qty SO yang sedang berjalan (COUNTING/RECOUNT) ikut diperbarui. SO yang sudah SUBMITTED dikunci.</p></div>
    ${canManage()?`<select class="input select" data-change="up-store">${storeOptions(state.store,false)}</select>`:`<span class="chip blue"><i></i>${escapeHTML(labelStore(state.store))}</span>`}</div>
   <div class="note warning">Cost/HPP harus berasal dari sumber resmi agar Value Accuracy valid.</div>
-  <label class="dropzone"><b>⬆ Pilih File CSV Inventory Summary</b><small>Name - Variant, Category, Ending. SKU dicocokkan ke Item Library; item tanpa SKU diberi ID PENDING dan ditampilkan sebelum konfirmasi. Cost dan Harga Retail opsional.</small><input type="file" id="fileInput" accept=".csv,text/csv" data-change="file-pick"/></label>
+  <label class="dropzone"><b>⬆ Pilih File CSV Inventory Summary</b><small>Name - Variant, Category, Ending. Pencocokan inventory menggunakan Nama Item. Kolom SKU di file tidak diperlukan. Cost dan Harga Retail opsional.</small><input type="file" id="fileInput" accept=".csv,text/csv" data-change="file-pick"/></label>
   <div id="fileInfo" class="small muted">Belum ada file dipilih.</div>
   <div id="retailPreview"></div>
   <div class="row">${btn('Upload & Ganti Inventory','do-upload','primary')}</div>
-  <p class="footerhint">Inventory aktif sekarang: ${n(s?.inventory_count||0)} SKU. Maksimal 10.000 SKU per file. Baris Ending negatif dilewati otomatis.</p>
+  <p class="footerhint">Inventory aktif sekarang: ${n(s?.inventory_count||0)} item. Maksimal 10.000 item per file. Baris Ending negatif dilewati otomatis.</p>
  </div>
  <div class="card" id="uploadHistory"></div>`;
  upRows=[];upCheck=null;
@@ -1470,44 +1470,29 @@ CHG['file-pick']=async el=>{
   if(file.size>3*1024*1024)throw Error('File >3MB. Pecah atau rapikan file sebelum upload.');
   upRows=importRows(await file.text());
   if(!upRows.length)throw Error('Tidak ada item valid dengan Ending >= 0.');
-  if($('#fileInfo'))$('#fileInfo').textContent=`Mencocokkan ${n(upRows.length)} item dengan Item Library di Supabase...`;
+  if($('#fileInfo'))$('#fileInfo').textContent=`Memvalidasi ${n(upRows.length)} Nama Item...`;
   upCheck=await rpc('upload_check',{p_store:state.store,p_rows:upRows});
   renderRetailPreview(upRows,upCheck);
-  if($('#fileInfo'))$('#fileInfo').textContent=`Siap: ${n(upCheck.total)} item | ${n(upCheck.official)} SKU resmi | ${n(upCheck.from_file)} SKU dari file | ${n(upCheck.pending)} SKU sementara (PENDING)${upRows.skipped?` | ${n(upRows.skipped)} Ending negatif dilewati`:''}.`;
+  if($('#fileInfo'))$('#fileInfo').textContent=`Siap: ${n(upCheck.total)} item | identitas berdasarkan Nama Item${upRows.skipped?` | ${n(upRows.skipped)} Ending negatif dilewati`:''}.`;
  }catch(ex){upRows=[];upCheck=null;if($('#retailPreview'))$('#retailPreview').innerHTML='';if($('#fileInfo'))$('#fileInfo').textContent=ex.message;toast(ex.message,true)}
 };
-ACT['download-pending-sku']=()=>{
- if(!upCheck?.pending_items?.length)throw Error('Tidak ada daftar SKU sementara.');
- const rows=[['Nama Item','Category','Ending','ID Sementara','Sumber']];
- for(const x of upCheck.pending_items)rows.push([x.name,x.category,x.ending,x.sku,x.source==='pending_library'?'Item Library tanpa SKU':'Belum ada di Item Library']);
- const csv='\uFEFF'+rows.map(r=>r.map(v=>'"'+String(v??'').replaceAll('"','""')+'"').join(',')).join('\r\n');
- baSaveFile(csv,'SKU_BELUM_TERSEDIA_'+iso(new Date())+'.csv','text/csv;charset=utf-8');
-};
 ACT['do-upload']=async()=>{
- if(!upRows.length||!upCheck)throw Error('Pilih file dan tunggu validasi SKU dari server selesai.');
- const pending=Number(upCheck.pending||0);
- const msg=`Ganti SEMUA inventory aktif ${labelStore(state.store)} dengan ${n(upRows.length)} item?\n\n`+
-  `${n(upCheck.official)} SKU resmi Item Library, ${n(upCheck.from_file)} SKU dari CSV, ${n(pending)} memakai ID sementara PENDING.\n`+
-  (pending?'Item PENDING tetap dihitung dalam inventory dan SO, tetapi bukan SKU resmi. Unduh daftar perbaikannya bila diperlukan.\n\n':'\n')+
-  `Counting yang belum submit dapat mengikuti update inventory. Periksa file dan backup dahulu.`;
+ if(!upRows.length||!upCheck)throw Error('Pilih file dan tunggu validasi inventory selesai.');
+ const msg=`Ganti SEMUA inventory aktif ${labelStore(state.store)} dengan ${n(upRows.length)} item berdasarkan Nama Item?\n\n`+
+ `Counting yang belum submit akan disinkronkan berdasarkan Nama Item. Pastikan nama konsisten dan backup database dahulu.`;
  if(!confirm(msg))return;
  const out=await rpc('upload',{p_store:state.store,p_rows:upRows});
- toast(`Upload berhasil: ${n(out.sku_count)} item; ${n(out.sku_auto_from_library||0)} SKU resmi, ${n(out.pending_sku||0)} PENDING; ${n(out.synced_lines)} baris SO diperbarui.`);
+ toast(`Upload berhasil: ${n(out.sku_count)} item; ${n(out.synced_lines||0)} baris SO disinkronkan.`);
  upRows=[];upCheck=null;await refreshDashboard();await render();
 };
 function renderRetailPreview(rows,check){
  const box=$('#retailPreview');if(!box)return;
  const zero=rows.filter(x=>x.retail===0).length;
- const cell=(l,v)=>`<div class="db-tile"><small>${l}</small><b>${v}</b></div>`;
- const pending=check?.pending_items||[];
- box.innerHTML=`<div class="db-grid">${cell('Total Item',n(rows.length))}${cell('SKU Resmi',n(check?.official||0))}${cell('SKU dari CSV',n(check?.from_file||0))}${cell('SKU Pending',n(check?.pending||0))}</div>
- ${pending.length?`<div class="note warning"><b>${n(pending.length)} item belum memiliki SKU resmi.</b> Item tersebut akan disimpan dengan identitas teknis sementara berawalan <b>PENDING-</b>, bukan dengan Nama Item sebagai SKU. Lihat daftar sebelum upload. <button type="button" class="btn outline sm" data-act="download-pending-sku">⬇ Download daftar SKU belum tersedia (CSV)</button>
- <div class="tablewrap" style="margin-top:10px"><table><thead><tr><th>Nama Item belum terpetakan</th><th>Identitas sementara</th><th>Asal</th></tr></thead><tbody>${pending.slice(0,15).map(x=>`<tr><td>${escapeHTML(x.name)}</td><td class="mono">${escapeHTML(x.sku)}</td><td>${x.source==='pending_library'?'Item Library tanpa SKU':'Tidak ada di Item Library'}</td></tr>`).join('')}</tbody></table></div>
- <small>Menampilkan 15 contoh. Unduh CSV untuk daftar lengkap.</small></div>`:'<div class="note info">Semua item mempunyai kode SKU dari Item Library atau CSV.</div>'}
- <div class="db-grid">${cell('Harga Retail 0',n(zero))}${cell('Dilewati (Ending negatif)',n(rows.skipped||0))}</div>
- <div class="tablewrap"><table><thead><tr><th>Item</th><th>SKU hasil pemetaan</th><th>Category</th><th class="num">Ending</th><th class="num">Harga Retail</th></tr></thead><tbody>${rows.slice(0,80).map((x,i)=>`<tr><td>${escapeHTML(x.name)}</td><td class="mono">${check?.sample?.[i]?.sku?escapeHTML(check.sample[i].sku):(x.sku?escapeHTML(x.sku):'<span class="muted">Dicek ke Item Library</span>')}</td><td>${escapeHTML(x.category)}</td><td class="num">${n(x.ending)}</td><td class="num">${n(x.retail)}</td></tr>`).join('')}</tbody></table></div>
- <p class="small muted">Menampilkan 80 baris pertama dari ${n(rows.length)} item. Identitas final ditentukan di server sesuai preview.</p>`;
+ box.innerHTML=`<div class="db-grid"><div class="mini"><small>Total Item</small><b>${n(rows.length)}</b></div><div class="mini"><small>Nama unik</small><b>${n(check?.total||rows.length)}</b></div><div class="mini"><small>Harga retail 0</small><b>${n(zero)}</b></div></div>
+ <div class="note info">Pencocokan, cakupan, dan hasil SO menggunakan <b>Nama Item</b>. Pastikan nama produk konsisten antarpengunggahan.</div>
+ <div class="tablewrap"><table><thead><tr><th>Nama Item</th><th>Category</th><th class="num">Ending</th><th class="num">Harga Retail</th></tr></thead><tbody>${rows.slice(0,80).map(x=>`<tr><td>${escapeHTML(x.name)}</td><td>${escapeHTML(x.category)}</td><td class="num">${n(x.ending)}</td><td class="num">${n(x.retail)}</td></tr>`).join('')}</tbody></table></div><p class="small muted">Menampilkan 80 baris pertama dari ${n(rows.length)} item.</p>`;
 }
+
 async function loadUploadHistory(){
  const box=$('#uploadHistory');if(!box)return;
  const all=isAdmin();
@@ -1515,7 +1500,7 @@ async function loadUploadHistory(){
  const rows=await rpc('upload_history',all?{p_store:null,p_limit:200}:{p_store:state.store,p_limit:20});
  const title=all?'Riwayat Upload Semua Toko':`Riwayat Upload ${escapeHTML(labelStore(state.store))}`;
  const line=r=>`<tr><td>${escapeHTML(new Date(r.uploaded_at).toLocaleString('id-ID'))}</td>${all?`<td><b>${escapeHTML(r.store_name)}</b><br><small class="mono muted">${escapeHTML(r.store_code)}</small></td><td>${escapeHTML(r.area||'—')}</td>`:''}<td class="num">${n(r.sku_count)}</td><td>${escapeHTML(r.uploaded_by||'-')}</td></tr>`;
- box.innerHTML=`<h3 class="heading">${title}</h3>${rows.length?`<div class="tablewrap"><table><thead><tr><th>Waktu</th>${all?'<th>Toko</th><th>Area</th>':''}<th class="num">SKU</th><th>Diupload oleh</th></tr></thead><tbody>${rows.map(line).join('')}</tbody></table></div>`:'<div class="empty">Belum ada riwayat upload.</div>'}`;
+ box.innerHTML=`<h3 class="heading">${title}</h3>${rows.length?`<div class="tablewrap"><table><thead><tr><th>Waktu</th>${all?'<th>Toko</th><th>Area</th>':''}<th class="num">Item</th><th>Diupload oleh</th></tr></thead><tbody>${rows.map(line).join('')}</tbody></table></div>`:'<div class="empty">Belum ada riwayat upload.</div>'}`;
 }
 
 /* ---------- Manajemen Akses (Admin) ---------- */
@@ -1573,7 +1558,7 @@ async function loadAudit(){
 /* ---------- Mulai ---------- */
 (async()=>{const {data:{session}}=await sb.auth.getSession();if(session)await start();else loginView()})();
 
-/* ---------- Cakupan SKU: rasio SO per SKU dan status bisa dipilih / terkunci ---------- */
+/* ---------- Cakupan Item: rasio SO per SKU dan status bisa dipilih / terkunci ---------- */
 async function showCoverage(){
  const c=state.cov;
  if(state.me.role==='store')c.store=state.me.store_code;
@@ -1582,26 +1567,26 @@ async function showCoverage(){
  const s2=d.summary||{};const pct=s2.total?Math.round(100*s2.sudah/s2.total):0;
  const mini=(cls,l,val,sub)=>`<div class="mini ${cls}"><small>${l}</small><b>${val}</b><span>${sub}</span></div>`;
  const filters=[['ALL','Semua'],['BELUM','Belum di-SO'],['SUDAH','Sudah di-SO'],['DIPILIH','Bisa dipilih'],['TERKUNCI','Terkunci']];
- $('#content').innerHTML=`${isAdmin()?`<div class="card"><div class="card-head"><h3>Sinkronisasi Rasio</h3><span class="muted small">Pakai jika ada SKU terkunci karena rasio dari SO yang sudah dihapus</span></div><div class="row">${btn('Cek Perubahan','cov-sync-check','outline')}${btn('Terapkan Sinkronisasi','cov-sync-apply','danger')}</div><div id="covSync" class="note info small">Klik Cek Perubahan untuk melihat rasio yang akan berubah sebelum diterapkan.</div></div>`:''}
+ $('#content').innerHTML=`${isAdmin()?`<div class="card"><div class="card-head"><h3>Sinkronisasi Rasio</h3><span class="muted small">Pakai jika ada item terkunci karena rasio dari SO yang sudah dihapus</span></div><div class="row">${btn('Cek Perubahan','cov-sync-check','outline')}${btn('Terapkan Sinkronisasi','cov-sync-apply','danger')}</div><div id="covSync" class="note info small">Klik Cek Perubahan untuk melihat rasio yang akan berubah sebelum diterapkan.</div></div>`:''}
  <div class="card filter-card"><div class="filters">
    ${state.me.role!=='store'?`<select class="input select" data-change="cov-store">${storeOptions(c.store,false)}</select>`:`<span class="chip blue">${escapeHTML(labelStore(c.store))}</span>`}
-   <input id="covSearch" class="input grow" placeholder="Cari SKU / nama item" value="${escapeHTML(c.search)}"/>
+   <input id="covSearch" class="input grow" placeholder="Cari nama item" value="${escapeHTML(c.search)}"/>
    ${btn('Cari','cov-find','outline')}${rstHTML('cov')}
   </div>
-  <div class="note info">Aturan: setiap SKU harus ter-SO sekali dulu. SKU yang sudah ter-SO tidak bisa dipilih sampai semua SKU lain naik ke rasio yang sama. Rasio = jumlah SO selesai yang memuat SKU itu.</div></div>
+  <div class="note info">Aturan: setiap item harus ter-SO sekali sebelum dapat dipilih kembali. Rasio = jumlah SO selesai yang memuat Nama Item tersebut.</div></div>
  <div class="mini-row">
-   ${mini('','Total SKU',n(s2.total),'Seluruh SKU toko')}
+   ${mini('','Total Item',n(s2.total),'Seluruh Item toko')}
    ${mini('g','Sudah di-SO',n(s2.sudah),pct+'% dari total')}
    ${mini('a','Belum di-SO',n(s2.belum),'Rasio 0x')}
    ${mini('o','Bisa dipilih sekarang',n(s2.dipilih),'Rasio terendah '+n(s2.min_ratio)+'x')}
-   ${mini('r','Terkunci',n(s2.terkunci),'Menunggu SKU lain naik rasio')}
+   ${mini('r','Terkunci',n(s2.terkunci),'Menunggu item lain naik rasio')}
  </div>
  <div class="card">
   <div class="seg">${filters.map(([v,l])=>`<button class="${c.filter===v?'on':''}" data-act="cov-filter" data-v="${v}">${l}</button>`).join('')}</div>
-  <div class="tablewrap" style="margin-top:10px"><table class="cov-table"><thead><tr><th>Item & Warna</th><th>SKU</th><th class="num">Rasio</th><th>Status</th><th>Pemilihan</th></tr></thead><tbody>
-  ${(d.items||[]).map(x=>`<tr><td class="nm">${nameBadge(x.name,x.category)}</td><td class="mono">${escapeHTML(x.sku)}</td><td class="num"><span class="ratio ${x.ratio?'r1':'r0'}">${n(x.ratio)}x</span></td><td>${x.status==='SUDAH'?chip('TALLY','SUDAH SO'):chip('BELUM','BELUM SO')}</td><td>${x.eligible?'<span class="chip blue"><i></i>Bisa dipilih</span>':'<span class="chip red"><i></i>Terkunci</span>'}</td></tr>`).join('')||'<tr><td colspan="5" class="empty">Tidak ada SKU pada filter ini.</td></tr>'}
+  <div class="tablewrap" style="margin-top:10px"><table class="cov-table"><thead><tr><th>Item & Warna</th><th class="num">Rasio</th><th>Status SO</th><th>Pemilihan</th></tr></thead><tbody>
+  ${(d.items||[]).map(x=>`<tr><td class="nm">${nameBadge(x.name,x.category)}</td><td class="num"><span class="ratio ${x.ratio?'r1':'r0'}">${n(x.ratio)}x</span></td><td>${x.status==='SUDAH'?chip('TALLY','SUDAH SO'):chip('BELUM','BELUM SO')}</td><td>${x.eligible?'<span class="chip blue"><i></i>Bisa dipilih</span>':'<span class="chip red"><i></i>Terkunci</span>'}</td></tr>`).join('')||'<tr><td colspan="4" class="empty">Tidak ada item pada filter ini.</td></tr>'}
   </tbody></table></div>
-  <div class="pager"><span class="small muted">${n(d.total_filtered?c.offset+1:0)}–${n(Math.min(c.offset+50,d.total_filtered))} dari ${n(d.total_filtered)} SKU</span><div class="row">${btn('← Sebelumnya','cov-prev','outline')}${btn('Berikutnya →','cov-next','outline')}</div></div>
+  <div class="pager"><span class="small muted">${n(d.total_filtered?c.offset+1:0)}–${n(Math.min(c.offset+50,d.total_filtered))} dari ${n(d.total_filtered)} item</span><div class="row">${btn('← Sebelumnya','cov-prev','outline')}${btn('Berikutnya →','cov-next','outline')}</div></div>
  </div>`;
 }
 CHG['cov-store']=async el=>{const c=state.cov;c.store=el.value;c.offset=0;c.search='';await showCoverage()};
@@ -1630,9 +1615,9 @@ ACT['cln-browser']=async()=>{
  toast(`Draft browser dibersihkan: ${n(removed)} item`);
 };
 
-/* ---------- Sinkronisasi rasio (Admin): membuka SKU yang terkunci karena rasio SO yang sudah dihapus ---------- */
+/* ---------- Sinkronisasi rasio (Admin): membuka item yang terkunci karena rasio SO yang sudah dihapus ---------- */
 const covSyncText=d=>d.changed
- ?`Akan berubah: ${n(d.changed)} SKU. Contoh: ${(d.sample||[]).slice(0,8).map(x=>`${x.sku} ${x.dari}x→${x.menjadi}x`).join(', ')}.${d.archived_recorded?` Catatan: ${n(d.archived_recorded)} SO arsip tidak bisa dihitung ulang.`:''}`
+ ?`Akan berubah: ${n(d.changed)} item. Contoh: ${(d.sample||[]).slice(0,8).map(x=>`${x.sku} ${x.dari}x→${x.menjadi}x`).join(', ')}.${d.archived_recorded?` Catatan: ${n(d.archived_recorded)} SO arsip tidak bisa dihitung ulang.`:''}`
  :'Tidak ada perubahan. Rasio sudah sesuai dengan SO yang masih ada.';
 ACT['cov-sync-check']=async()=>{const d=await rpc('rounds_resync',{p_store:state.cov.store,p_apply:false});$('#covSync').textContent=covSyncText(d)};
 ACT['cov-sync-apply']=async()=>{
@@ -1645,10 +1630,10 @@ ACT['cov-sync-apply']=async()=>{
 /* ---------- Hapus permanen SO APPROVED yang salah (Admin, tanpa export) ---------- */
 ACT['so-hard-del']=async el=>{
  const id=el.dataset.id;
- if(!confirm('HAPUS PERMANEN SO ini dari database dan aplikasi?\n\nDetail SKU dihapus, rasio SKU dikembalikan, dan SO tidak lagi dihitung di dashboard. Tidak perlu export. Lanjutkan?'))return;
+ if(!confirm('HAPUS PERMANEN SO ini dari database dan aplikasi?\n\nDetail item dihapus, rasio item dikembalikan, dan SO tidak lagi dihitung di dashboard. Tidak perlu export. Lanjutkan?'))return;
  const out=await rpc('hard_delete',{p_cycles:[id]});
  toast(out.archived_rounds_not_reverted
-  ?'SO dihapus. SO ini sudah dibersihkan, jadi rasio SKU-nya perlu disinkronkan lewat Cakupan SKU.'
+  ?'SO dihapus. SO ini sudah dibersihkan, jadi rasio itemnya perlu disinkronkan lewat Cakupan Item.'
   :'SO dihapus permanen');
  state.validation.open=false;state.validation.data=null;
  await refreshDashboard();await render();
@@ -1661,14 +1646,14 @@ function presActivity(){
  if(pg==='count'){
   if(f?.closest?.('#countTable')){
    const tr=f.closest('tr[data-sku]');const pos=POS.find(([k])=>k===f.dataset.pos);
-   return `Mengisi ${pos?pos[1]:'alasan'} · SKU ${tr?.dataset.sku||''}`;
+   return `Mengisi ${pos?pos[1]:'alasan'} · Item ${tr?.querySelector('.nm')?.textContent?.trim()||''}`;
   }
   return (state.count.open||state.me.role==='store')?'Counting SO':'Daftar SO counting';
  }
  if(pg==='validation')return state.validation.open?'Validasi SPV (detail SO)':'Daftar validasi SPV';
  if(pg==='schedule')return state.builder?'Membuat / mengubah jadwal SO':'Melihat jadwal SO';
  if(pg==='ba')return state.ba?.open?'Berita Acara (detail)':'Daftar Berita Acara';
- if(pg==='coverage')return 'Cakupan SKU';
+ if(pg==='coverage')return 'Cakupan Item';
  if(pg==='upload')return 'Upload inventory';
  if(pg==='export')return 'Export & pembersihan';
  if(pg==='admin')return 'Manajemen akses';
@@ -1846,17 +1831,16 @@ function baArticle(h,s,lines,total,full,editReasons=false){
   <header class="ba-head"><img src="logo.png" alt=""/><div><h2>BERITA ACARA STOCK OPNAME</h2><p class="mono">${escapeHTML(h.ba_no)}</p></div></header>
   <table class="ba-meta"><tr><td>Toko</td><td>${escapeHTML(h.store_name)} (${escapeHTML(h.store_code)})</td><td>Tanggal SO</td><td>${fmtDT(h.started_at)}</td></tr>
   <tr><td>Dibuat oleh</td><td>${escapeHTML(h.created_name||'')}</td><td>Tanggal BA</td><td>${fmtDT(h.created_at)}</td></tr></table>
-  ${Number(h.sku_correction_count||0)>0?`<p class="ba-sku-correction"><b>KOREKSI KODE SKU:</b> ${n(h.sku_correction_count)} SKU disesuaikan dengan Item Library pada ${fmtDT(h.sku_correction_at)}. Hanya identitas SKU yang diperbarui; jumlah, nilai selisih, alasan, serta persetujuan asli tidak berubah. Dokumen yang diunduh sebelum koreksi harus diunduh ulang.</p>`:''}
   <p class="ba-text">Telah dilakukan stock opname pada toko tersebut, dengan hasil sebagai berikut:</p>
   <table class="ba-sum"><tbody>
-   <tr><td>Total SKU dihitung</td><td class="num">${n(s.total_skus)}</td><td>SKU sesuai sistem</td><td class="num">${n(s.tally_count)}</td></tr>
-   <tr><td>SKU selisih</td><td class="num">${n(s.variance_count)}</td><td>Net selisih qty</td><td class="num">${signed(s.net_qty)}</td></tr>
+   <tr><td>Total Item dihitung</td><td class="num">${n(s.total_skus)}</td><td>Item sesuai sistem</td><td class="num">${n(s.tally_count)}</td></tr>
+   <tr><td>Item selisih</td><td class="num">${n(s.variance_count)}</td><td>Net selisih qty</td><td class="num">${signed(s.net_qty)}</td></tr>
    <tr><td>Nilai kekurangan</td><td class="num">${rp(s.missing_value)}</td><td>Nilai kelebihan</td><td class="num">${rp(s.surplus_value)}</td></tr>
   </tbody></table>
-  ${total?`<p class="ba-text">Daftar SKU selisih${!full&&lines.length<total?` (menampilkan ${n(lines.length)} dari ${n(total)} SKU, urut selisih terbesar; unduh untuk daftar lengkap)`:''}:</p>
-  <div class="tablewrap ba-lines"><table><colgroup><col style="width:14%"/><col style="width:38%"/><col style="width:8%"/><col style="width:8%"/><col style="width:8%"/><col style="width:24%"/></colgroup><thead><tr><th>SKU</th><th>Nama item</th><th class="num">System</th><th class="num">Actual</th><th class="num">Selisih</th><th>Alasan</th></tr></thead><tbody>
-  ${lines.map(l=>`<tr><td class="mono">${escapeHTML(l.sku)}</td><td class="ba-item-name">${escapeHTML(l.item_name)}</td><td class="num">${n(l.system_qty)}</td><td class="num">${n(l.actual_qty)}</td><td class="num">${signed(l.diff_qty)}</td><td class="ba-reason-cell">${editReasons?`<textarea class="input ba-reason-editor no-print" data-change="ba-reason" data-sku="${escapeHTML(l.sku)}" data-saved="${escapeHTML(l.reason||'')}" maxlength="500" rows="2" placeholder="Alasan wajib diisi">${escapeHTML(l.reason||'')}</textarea><span class="ba-reason-print">${escapeHTML(l.reason||'')}</span>`:`<span class="ba-reason-static">${escapeHTML(l.reason||'—')}</span>`}</td></tr>`).join('')}
-  </tbody></table></div>`:'<p class="ba-text">Tidak ada selisih. Seluruh SKU sesuai dengan sistem.</p>'}
+  ${total?`<p class="ba-text">Daftar item selisih${!full&&lines.length<total?` (menampilkan ${n(lines.length)} dari ${n(total)} item, urut selisih terbesar; unduh untuk daftar lengkap)`:''}:</p>
+  <div class="tablewrap ba-lines"><table><colgroup><col style="width:45%"/><col style="width:9%"/><col style="width:9%"/><col style="width:9%"/><col style="width:28%"/></colgroup><thead><tr><th>Nama item</th><th class="num">System</th><th class="num">Actual</th><th class="num">Selisih</th><th>Alasan</th></tr></thead><tbody>
+  ${lines.map(l=>`<tr><td class="ba-item-name">${escapeHTML(l.item_name)}</td><td class="num">${n(l.system_qty)}</td><td class="num">${n(l.actual_qty)}</td><td class="num">${signed(l.diff_qty)}</td><td class="ba-reason-cell">${editReasons?`<textarea class="input ba-reason-editor no-print" data-change="ba-reason" data-sku="${escapeHTML(l.sku)}" data-saved="${escapeHTML(l.reason||'')}" maxlength="500" rows="2" placeholder="Alasan wajib diisi">${escapeHTML(l.reason||'')}</textarea><span class="ba-reason-print">${escapeHTML(l.reason||'')}</span>`:`<span class="ba-reason-static">${escapeHTML(l.reason||'—')}</span>`}</td></tr>`).join('')}
+  </tbody></table></div>`:'<p class="ba-text">Tidak ada selisih. Seluruh item sesuai dengan sistem.</p>'}
   <div class="ba-sign">
    <div><span>SPV Toko</span><div class="ba-stamp">${stamp(h.spv_at,h.spv_name,'Belum ditandatangani')}</div></div>
    <div><span>Manager</span><div class="ba-stamp">${stamp(h.mgr_at,h.mgr_name,'Belum disetujui')}</div></div>
@@ -1877,7 +1861,7 @@ async function loadBADetail(){
   <div class="row"><b class="mono">${escapeHTML(h.ba_no)}</b>${h.adj_at?chip('TALLY','Sudah di-adjust'):chip('SUBMITTED',h.mgr_at?'Siap di-adjust':(h.spv_at?'Menunggu Manager':'Menunggu SPV'))}</div>
   <div class="row">${canSpv?btn('Tanda tangan SPV','ba-sign','primary',{id:h.id,level:'SPV'}):''}${canMgr?btn('Setujui Manager','ba-sign','dark',{id:h.id,level:'MGR'}):''}${h.mgr_at?btn('Export CSV Adjust','ba-adj-csv','dark'):''}${btn('Unduh HTML','ba-download','ghost')}${btn('Cetak / PDF','ba-print','ghost')}</div>
  </div>
- ${canEditReason?'<div class="note info no-print">Kolom Alasan dapat dikoreksi per SKU sebelum tanda tangan SPV. Perubahan tersimpan otomatis setelah kolom ditinggalkan.</div>':''}
+ ${canEditReason?'<div class="note info no-print">Kolom Alasan dapat dikoreksi per item sebelum tanda tangan SPV. Perubahan tersimpan otomatis setelah kolom ditinggalkan.</div>':''}
  ${baArticle(h,s,lines,total,false,canEditReason)}`;
 }
 ACT['ba-open']=async el=>{baState().open=el.dataset.id;await render()};
@@ -1891,13 +1875,13 @@ async function baFlushReasons(){
  await Promise.all([...baReasonPending]);
 }
 ACT['ba-print']=async()=>{await baFlushReasons();window.print()};
-// Alasan adalah catatan per SKU pada BA. Otomatis mengambil hasil validasi
+// Alasan adalah catatan per item pada BA. Otomatis mengambil hasil validasi
 // bila belum pernah dikoreksi; koreksi hanya sebelum tanda tangan SPV.
 CHG['ba-reason']=el=>{
  const reason=el.value.trim();
  const previous=el.dataset.saved||'';
  if(reason===previous)return;
- if(!reason){el.value=previous;throw Error('Alasan SKU selisih wajib diisi.');}
+ if(!reason){el.value=previous;throw Error('Alasan item selisih wajib diisi.');}
  if(reason.length>500){el.value=previous;throw Error('Alasan maksimal 500 karakter.');}
  const task=(async()=>{
   try{
@@ -1906,13 +1890,13 @@ CHG['ba-reason']=el=>{
    el.value=reason;
    const printable=el.closest('td')?.querySelector('.ba-reason-print');
    if(printable)printable.textContent=reason;
-   toast('Alasan tersimpan untuk SKU '+el.dataset.sku);
+   toast('Alasan item tersimpan');
   }catch(err){el.value=previous;throw err;}
  })();
  baReasonPending.add(task);
  return task.finally(()=>baReasonPending.delete(task));
 };
-// Unduh BA (lengkap, semua SKU selisih) sebagai satu file HTML. Dibuat di browser, tidak disimpan di server.
+// Unduh BA (lengkap, semua item selisih) sebagai satu file HTML. Dibuat di browser, tidak disimpan di server.
 async function baDownload(ids){
  await baFlushReasons();
  if(!ids.length){toast('Pilih BA dulu.',true);return}
@@ -1928,7 +1912,7 @@ async function baDownload(ids){
  await rpc('ba_mark_exported',{p_bas:ids});
  toast(`${n(docs.length)} BA diunduh dan ditandai sudah diekspor.`);
 }
-// CSV adjust untuk Moka: No BA, Item Name, Qty Selisih (hanya SKU yang selisih). Satu file gabungan.
+// CSV adjust untuk Moka: No BA, Item Name, Qty Selisih (hanya item yang selisih). Satu file gabungan.
 function baAdjNote(h){
  const d=new Date(h.created_at);
  const p=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Makassar',day:'2-digit',month:'2-digit',year:'numeric'}).formatToParts(d);

@@ -1315,3 +1315,48 @@ body{-webkit-font-smoothing:antialiased}
 #countTable th.num,#valTable th.num{white-space:normal}
 /* Only mobile or genuinely narrow content widths use horizontal scrolling. */
 @media (max-width:900px){#countTable{min-width:960px}#valTable{min-width:960px}}
+
+
+/* v33: Indikator SKU resmi pada Cakupan SKU, terpisah dari status sudah/belum SO. */
+.cov-official-card{padding:14px 17px;margin-bottom:12px}
+.cov-official-header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:11px}
+.cov-official-header h3{margin:0 0 4px;font-size:15px}
+.cov-official-header p{margin:0;line-height:1.45}
+.cov-official-percent{font-size:17px;color:#047857;white-space:nowrap}
+.cov-official-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.cov-official-stat{padding:12px 14px;border-radius:11px;display:flex;flex-direction:column;gap:3px;border:1px solid #e5e7eb}
+.cov-official-stat.yes{background:#f0fdf4;border-color:#bbf7d0}
+.cov-official-stat.no{background:#fff7ed;border-color:#fed7aa}
+.cov-official-stat small{font-size:11.5px;font-weight:800;color:#475569}
+.cov-official-stat b{font-size:27px;font-weight:900;font-variant-numeric:tabular-nums;line-height:1.25}
+.cov-official-stat.yes b{color:#047857}
+.cov-official-stat.no b{color:#c2410c}
+.cov-official-stat span{color:#64748b;font-size:11px;line-height:1.35}
+.cov-official-meter{height:8px;background:#fed7aa;border-radius:99px;overflow:hidden;margin-top:12px}
+.cov-official-meter span{display:block;height:100%;background:#10b981;border-radius:99px;transition:width .2s}
+.cov-table{min-width:690px}
+@media(max-width:640px){.cov-official-card{padding:12px}.cov-official-header{align-items:flex-start;flex-wrap:wrap}.cov-official-stats{grid-template-columns:1fr}.cov-official-stat{padding:10px 12px}}
+
+/* v35 - Nama Item menjadi kolom utama, tanpa SKU; seluruh kolom desktop muat 1 layar. */
+#countTable,#valTable{min-width:920px;table-layout:fixed;width:100%}
+#countTable col.c-item{width:29%}
+#countTable col.c-pos{width:9.3%}
+#countTable col.c-total{width:6.8%}
+#countTable col.c-reason{width:18%}
+#countTable col.c-status{width:9%}
+#valTable col.v-item{width:29%}
+#valTable col.v-system{width:8%}
+#valTable col.v-pos{width:8%}
+#valTable col.v-total{width:8%}
+#valTable col.v-status{width:11%}
+#valTable col.v-reason{width:12%}
+#countTable th,#countTable td,#valTable th,#valTable td{padding:6px 5px}
+#countTable td.nm .nbadge-c,#valTable td.nm .nbadge-c{max-width:100%;white-space:normal;overflow-wrap:break-word}
+#countTable .st-cell .chip,#valTable .st-cell .chip{font-size:10px;white-space:normal}
+.ba-lines table{table-layout:fixed;min-width:0;width:100%}
+.ba-lines th,.ba-lines td{padding:5px 6px;vertical-align:top}
+.ba-lines .ba-item-name{overflow-wrap:break-word;word-break:normal}
+@media(max-width:900px){#countTable,#valTable{min-width:920px}}
+
+/* v35 - label item manual hanya satu kali (tanpa kode SKU terpisah) */
+.sku-row .sku-name-pick{min-width:0;flex:1;overflow-wrap:break-word;font-weight:700}
