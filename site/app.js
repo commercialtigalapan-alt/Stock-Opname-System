@@ -14,6 +14,7 @@ const state={me:null,stores:[],dashboard:[],page:'dashboard',store:'',online:tru
  builder:null,cov:{store:'',filter:'ALL',search:'',offset:0,data:null}};
 let upRows=[];
 let upCheck=null;
+let upConflicts=[];
 let inflight=0;
 let calc=null;
 
@@ -505,14 +506,40 @@ function importRows(csv){
  const index=names=>names.map(normHead).map(v=>headers.indexOf(v)).find(i=>i>=0)??-1;
  const cName=index(['NAME_VARIANT','Name - Variant','Name Variant','Item Name','Nama Item']);const cEnd=index(['ENDING','Ending Inventory','Qty','Stok Akhir']);const cCat=index(['CATEGORY','Category Name','Category']);const cRetail=index(['Harga Retail','Retail Price','Harga_Retail','RETAIL']);const cCost=index(['COST','HPP','Unit Cost','Unit_Cost']);
  if(cName<0||cEnd<0)throw Error('File harus memuat Name - Variant (atau Item Name) dan Ending. Kolom SKU tidak diperlukan.');
- const body=parsed.filter(v=>!(v[cEnd]||'').trim().startsWith('-'));
+ const body=parsed.map((cells,i)=>({cells,line:i+2})).filter(row=>!String(row.cells[cEnd]||'').trim().startsWith('-'));
  if(body.length>10000)throw Error('Maksimal 10.000 item per upload.');
- const seen=new Set();
- const out=body.map((v,i)=>{const name=(v[cName]||'').trim(),ending=(v[cEnd]||'').trim(),cost=cCost>=0?(v[cCost]||'0').trim():'0',retail=cRetail>=0?((v[cRetail]||'').trim()||'0'):'0';
-  if(!name||!/^\d+$/.test(ending)||!/^\d+(\.\d{1,2})?$/.test(cost)||!/^\d+(\.\d{1,2})?$/.test(retail))throw Error(`Baris ${i+2} tidak valid: Nama Item/Ending/Cost.`);
-  const key=name.toUpperCase().replace(/\s+/g,' ').trim();if(seen.has(key))throw Error('Nama Item duplikat: '+name);seen.add(key);
-  return{name,category:cCat>=0?(v[cCat]||'').trim():'',ending:Number(ending),cost:Number(cost),retail:Number(retail)};});
- out.skipped=parsed.length-body.length;return out;
+ const out=[],byName=new Map(),merged=[],conflicts=[];
+ for(const {cells:v,line} of body){
+  const name=String(v[cName]||'').replace(/\s+/g,' ').trim();
+  const ending=String(v[cEnd]||'').trim();
+  const cost=cCost>=0?String(v[cCost]||'0').trim():'0';
+  const retail=cRetail>=0?(String(v[cRetail]||'').trim()||'0'):'0';
+  const category=cCat>=0?String(v[cCat]||'').replace(/\s+/g,' ').trim():'';
+  if(!name||!/^[0-9]+$/.test(ending)||!/^[0-9]+(\.[0-9]{1,2})?$/.test(cost)||!/^[0-9]+(\.[0-9]{1,2})?$/.test(retail))throw Error(`Baris ${line} tidak valid: Nama Item/Ending/Cost.`);
+  const row={name,category,ending:Number(ending),cost:Number(cost),retail:Number(retail)};
+  const key=name.toUpperCase();
+  const existing=byName.get(key);
+  if(!existing){byName.set(key,{row,line});out.push(row);continue}
+  const prev=existing.row;
+  const sameMetadata=prev.category.toUpperCase()===row.category.toUpperCase()&&prev.cost===row.cost&&prev.retail===row.retail;
+  // Duplikat dengan 0 unit aman dibuang jika category/harga sama.
+  // Jika dua baris berisi stok positif, jangan menjumlahkan atau mengambil salah satu secara diam-diam.
+  if(sameMetadata&&(prev.ending===0||row.ending===0)){
+   let keptLine=existing.line,removedLine=line;
+   if(prev.ending===0&&row.ending>0){prev.ending=row.ending;prev.name=row.name;keptLine=line;removedLine=existing.line;existing.line=line}
+   merged.push({name:key,keptLine,removedLine,reason:'Duplikat stok 0, metadata identik'});
+  }else{
+   conflicts.push({name:key,firstLine:existing.line,nextLine:line,firstQty:prev.ending,nextQty:row.ending,
+    firstCategory:prev.category,nextCategory:row.category,firstCost:prev.cost,nextCost:row.cost,firstRetail:prev.retail,nextRetail:row.retail,
+    reason:!sameMetadata?'Kategori/HPP/Harga berbeda':'Kedua baris memiliki stok positif'});
+  }
+ }
+ if(conflicts.length){
+  const err=new Error(`Ditemukan ${conflicts.length} duplikat Nama Item berkonflik. Contoh: ${conflicts[0].name} (baris ${conflicts[0].firstLine} & ${conflicts[0].nextLine}). Unduh laporan konflik dan perbaiki file CSV. Stok tidak diubah.`);
+  err.conflicts=conflicts;throw err;
+ }
+ out.skipped=parsed.length-body.length;out.deduplicated=merged.length;out.dedupeDetails=merged;
+ return out;
 }
 
 /* ---------- SO Schedule ---------- */
@@ -1459,13 +1486,13 @@ async function showUpload(){
   <p class="footerhint">Inventory aktif sekarang: ${n(s?.inventory_count||0)} item. Maksimal 10.000 item per file. Baris Ending negatif dilewati otomatis.</p>
  </div>
  <div class="card" id="uploadHistory"></div>`;
- upRows=[];upCheck=null;
+ upRows=[];upCheck=null;upConflicts=[];
  loadUploadHistory().catch(()=>{});
 }
 CHG['up-store']=async el=>{state.store=el.value;await refreshDashboard();await render()};
 CHG['file-pick']=async el=>{
  try{
-  upRows=[];upCheck=null;
+  upRows=[];upCheck=null;upConflicts=[];
   const file=el.files[0];if(!file)return;
   if(file.size>3*1024*1024)throw Error('File >3MB. Pecah atau rapikan file sebelum upload.');
   upRows=importRows(await file.text());
@@ -1473,8 +1500,26 @@ CHG['file-pick']=async el=>{
   if($('#fileInfo'))$('#fileInfo').textContent=`Memvalidasi ${n(upRows.length)} Nama Item...`;
   upCheck=await rpc('upload_check',{p_store:state.store,p_rows:upRows});
   renderRetailPreview(upRows,upCheck);
-  if($('#fileInfo'))$('#fileInfo').textContent=`Siap: ${n(upCheck.total)} item | identitas berdasarkan Nama Item${upRows.skipped?` | ${n(upRows.skipped)} Ending negatif dilewati`:''}.`;
- }catch(ex){upRows=[];upCheck=null;if($('#retailPreview'))$('#retailPreview').innerHTML='';if($('#fileInfo'))$('#fileInfo').textContent=ex.message;toast(ex.message,true)}
+  if($('#fileInfo'))$('#fileInfo').textContent=`Siap: ${n(upCheck.total)} item unik | identitas berdasarkan Nama Item${upRows.deduplicated?` | ${n(upRows.deduplicated)} duplikat aman dirapikan`:''}${upRows.skipped?` | ${n(upRows.skipped)} Ending negatif dilewati`:''}.`;
+ }catch(ex){
+  upRows=[];upCheck=null;upConflicts=ex.conflicts||[];
+  if($('#retailPreview'))$('#retailPreview').innerHTML=upConflicts.length?`<div class="note warning"><b>${n(upConflicts.length)} konflik Nama Item</b> perlu diperbaiki pada file sebelum upload. Baris dengan stok positif atau metadata berbeda tidak digabung otomatis. ${btn('⤓ Unduh laporan konflik CSV','up-conflicts-csv','outline')}</div><div class="tablewrap"><table><thead><tr><th>Nama Item</th><th>Baris</th><th>Qty</th><th>Penyebab</th></tr></thead><tbody>${upConflicts.slice(0,30).map(c=>`<tr><td>${escapeHTML(c.name)}</td><td>${c.firstLine}, ${c.nextLine}</td><td>${n(c.firstQty)} / ${n(c.nextQty)}</td><td>${escapeHTML(c.reason)}</td></tr>`).join('')}</tbody></table></div>`:'';
+  if($('#fileInfo'))$('#fileInfo').textContent=ex.message;toast(ex.message,true);
+ }
+};
+ACT['up-dedupe-csv']=()=>{
+ if(!upRows.dedupeDetails?.length)return;
+ const head=['Nama Item','Baris Dipertahankan','Baris Diabaikan','Alasan'];
+ const rows=upRows.dedupeDetails.map(d=>[d.name,d.keptLine,d.removedLine,d.reason]);
+ const csv='\uFEFF'+[head,...rows].map(r=>r.map(v=>'"'+String(v??'').replaceAll('"','""')+'"').join(',')).join('\r\n');
+ baSaveFile(csv,`DUPLIKAT_NOL_DIRAPIKAN_${iso(new Date())}.csv`,'text/csv;charset=utf-8');
+};
+ACT['up-conflicts-csv']=()=>{
+ if(!upConflicts.length)return;
+ const h=['Nama Item','Baris Awal','Baris Duplikat','Qty Awal','Qty Duplikat','Kategori Awal','Kategori Duplikat','HPP Awal','HPP Duplikat','Retail Awal','Retail Duplikat','Penyebab'];
+ const data=upConflicts.map(c=>[c.name,c.firstLine,c.nextLine,c.firstQty,c.nextQty,c.firstCategory,c.nextCategory,c.firstCost,c.nextCost,c.firstRetail,c.nextRetail,c.reason]);
+ const csv='\uFEFF'+[h,...data].map(row=>row.map(v=>'"'+String(v??'').replaceAll('"','""')+'"').join(',')).join('\r\n');
+ baSaveFile(csv,`KONFLIK_NAMA_ITEM_${iso(new Date())}.csv`,'text/csv;charset=utf-8');
 };
 ACT['do-upload']=async()=>{
  if(!upRows.length||!upCheck)throw Error('Pilih file dan tunggu validasi inventory selesai.');
@@ -1483,12 +1528,13 @@ ACT['do-upload']=async()=>{
  if(!confirm(msg))return;
  const out=await rpc('upload',{p_store:state.store,p_rows:upRows});
  toast(`Upload berhasil: ${n(out.sku_count)} item; ${n(out.synced_lines||0)} baris SO disinkronkan.`);
- upRows=[];upCheck=null;await refreshDashboard();await render();
+ upRows=[];upCheck=null;upConflicts=[];await refreshDashboard();await render();
 };
 function renderRetailPreview(rows,check){
  const box=$('#retailPreview');if(!box)return;
  const zero=rows.filter(x=>x.retail===0).length;
- box.innerHTML=`<div class="db-grid"><div class="mini"><small>Total Item</small><b>${n(rows.length)}</b></div><div class="mini"><small>Nama unik</small><b>${n(check?.total||rows.length)}</b></div><div class="mini"><small>Harga retail 0</small><b>${n(zero)}</b></div></div>
+ const safeDedup=rows.deduplicated?`<div class="note info"><b>${n(rows.deduplicated)} baris duplikat stok 0 telah dirapikan otomatis.</b> Tidak ada stok yang dijumlahkan atau dikurangi. ${btn('⤓ Unduh daftar duplikat yang dirapikan','up-dedupe-csv','outline')}<p class="small">Contoh: ${escapeHTML(rows.dedupeDetails.slice(0,5).map(d=>d.name).join(', '))}${rows.deduplicated>5?' …':''}</p></div>`:'';
+ box.innerHTML=`${safeDedup}<div class="db-grid"><div class="mini"><small>Total Item</small><b>${n(rows.length)}</b></div><div class="mini"><small>Nama unik</small><b>${n(check?.total||rows.length)}</b></div><div class="mini"><small>Harga retail 0</small><b>${n(zero)}</b></div></div>
  <div class="note info">Pencocokan, cakupan, dan hasil SO menggunakan <b>Nama Item</b>. Pastikan nama produk konsisten antarpengunggahan.</div>
  <div class="tablewrap"><table><thead><tr><th>Nama Item</th><th>Category</th><th class="num">Ending</th><th class="num">Harga Retail</th></tr></thead><tbody>${rows.slice(0,80).map(x=>`<tr><td>${escapeHTML(x.name)}</td><td>${escapeHTML(x.category)}</td><td class="num">${n(x.ending)}</td><td class="num">${n(x.retail)}</td></tr>`).join('')}</tbody></table></div><p class="small muted">Menampilkan 80 baris pertama dari ${n(rows.length)} item.</p>`;
 }

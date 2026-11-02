@@ -1,3 +1,10 @@
+-- TIGALAPAN 032 REVISI: satu transaksi untuk 11 duplikasi aman + migrasi Nama Item.
+-- Jalankan file ini SEBAGAI PENGGANTI file 032 sebelumnya (bukan setelah 032 sukses).
+-- Prasyarat: 031 sudah sukses; CSV diagnosa 2026-11-02 masih sesuai database.
+-- WAJIB backup Supabase; hentikan Counting / Upload / approval selama eksekusi.
+-- Jika guard gagal, tidak ada perubahan inventory / BA / SO / backup / audit.
+-- Pilih satu SQL ini; jangan menjalankan SQL 032 lama secara terpisah.
+
 -- MIGRASI 032: Nama Item satu-satunya identitas bisnis inventory/SO/BA.
 -- Internal kolom sku dipertahankan untuk kompatibilitas RPC, namun nilainya berubah
 -- menjadi UPPER(TRIM(Nama Item, spasi tunggal)), BUKAN kode SKU asli.
@@ -6,6 +13,114 @@
 -- Backup database dahulu; hentikan upload dan counting selama migrasi.
 BEGIN;
 SET LOCAL lock_timeout='15s';
+
+-- ================= PERBAIKAN DUPLIKAT 032 (ATOMIC) =================
+-- Berdasarkan export Supabase: 11 pasangan (22 baris), seluruh ending=0.
+-- Tidak menggabungkan Qty, tidak menyentuh tsi_so_lines/BA pada tahap ini.
+-- Jika isi database sudah berubah, seluruh transaksi dibatalkan.
+-- Baris yang dikeluarkan dicadangkan sebelum perubahan.
+
+LOCK TABLE public.tsi_so_inventory IN SHARE ROW EXCLUSIVE MODE;
+CREATE TEMP TABLE _nm032_expected(store_code text,name_key text) ON COMMIT DROP;
+INSERT INTO _nm032_expected(store_code,name_key) VALUES
+ ('TPK-PLU','M 4 SUPER 1 LITER'),
+ ('TPK-TRJ','KEMEJA FORMAL STEEL BLUE PDK 2XL'),
+ ('TPK-TRJ','KEMEJA FORMAL STEEL BLUE PDK L'),
+ ('TPK-TRJ','KEMEJA FORMAL STEEL BLUE PDK M'),
+ ('TPK-TRJ','KEMEJA FORMAL STEEL BLUE PDK S'),
+ ('TPK-TRJ','KEMEJA FORMAL STEEL BLUE PDK XL'),
+ ('TPK-TRJ','KEMEJA FORMAL STEEL BLUE PJG 2XL'),
+ ('TPK-TRJ','KEMEJA FORMAL STEEL BLUE PJG L'),
+ ('TPK-TRJ','KEMEJA FORMAL STEEL BLUE PJG M'),
+ ('TPK-TRJ','KEMEJA FORMAL STEEL BLUE PJG S'),
+ ('TPK-TRJ','KEMEJA FORMAL STEEL BLUE PJG XL');
+
+CREATE TEMP TABLE _nm032_candidates ON COMMIT DROP AS
+SELECT i.store_code, i.sku old_sku, i.item_name, i.category, i.ending,
+ i.cost, i.retail_price, i.upload_id, i.updated_at,
+ n.name_key, to_jsonb(i) AS full_row,
+ count(*) OVER(PARTITION BY i.store_code,n.name_key) AS group_size,
+ row_number() OVER(PARTITION BY i.store_code,n.name_key
+     ORDER BY CASE WHEN i.item_name=n.name_key THEN 0 ELSE 1 END,
+       CASE WHEN i.sku<>n.name_key THEN 0 ELSE 1 END,i.sku) AS row_no
+FROM public.tsi_so_inventory i
+CROSS JOIN LATERAL (
+ SELECT upper(regexp_replace(btrim(coalesce(i.item_name,'')), '[[:space:]]+', ' ', 'g')) name_key
+) n
+JOIN _nm032_expected e ON e.store_code=i.store_code AND e.name_key=n.name_key;
+
+DO $dedup_guard$ DECLARE v_problem text; v_n integer; BEGIN
+ SELECT count(*) INTO v_n FROM _nm032_candidates;
+ IF v_n<>22 THEN RAISE EXCEPTION '032 revisi: data duplikat berubah (seharusnya 22 baris, aktual %). Jalankan diagnosa ulang.', v_n; END IF;
+
+ SELECT c.store_code||' | '||c.name_key INTO v_problem
+ FROM _nm032_candidates c
+ GROUP BY c.store_code,c.name_key
+ HAVING count(*)<>2
+    OR count(*) FILTER (WHERE c.group_size=2)<>2
+    OR count(*) FILTER (WHERE c.item_name=c.name_key)<>1
+    OR count(DISTINCT c.category)<>1
+    OR count(DISTINCT c.upload_id)<>1
+    OR count(DISTINCT c.cost)<>1
+    OR count(DISTINCT c.retail_price)<>1
+    OR count(*) FILTER (WHERE c.ending=0)<>2
+ LIMIT 1;
+ IF v_problem IS NOT NULL THEN
+  RAISE EXCEPTION '032 revisi: data tidak lagi identik pada %, periksa manual. Tidak ada perubahan.',v_problem;
+ END IF;
+
+ -- Cek kelompok benturan lain yang tidak termasuk 11 baris referensi.
+ SELECT d.store_code||' | '||d.name_key INTO v_problem FROM (
+ SELECT i.store_code,
+  upper(regexp_replace(btrim(coalesce(i.item_name,'')), '[[:space:]]+', ' ', 'g')) name_key
+ FROM public.tsi_so_inventory i
+ GROUP BY i.store_code,upper(regexp_replace(btrim(coalesce(i.item_name,'')), '[[:space:]]+', ' ', 'g'))
+ HAVING count(*)>1
+ ) d LEFT JOIN _nm032_expected e ON e.store_code=d.store_code AND e.name_key=d.name_key
+ WHERE e.store_code IS NULL LIMIT 1;
+ IF v_problem IS NOT NULL THEN
+  RAISE EXCEPTION '032 revisi: muncul duplikasi baru pada %. Jalankan diagnosa ulang.',v_problem;
+ END IF;
+END $dedup_guard$;
+
+-- Backup khusus baris inventory yang dikeluarkan; tidak memuat credential.
+CREATE TABLE IF NOT EXISTS public.tsi_so_inventory_dedup_backup_032 (
+ store_code text NOT NULL,
+ old_sku text NOT NULL,
+ name_key text NOT NULL,
+ full_row jsonb NOT NULL,
+ backed_up_at timestamptz NOT NULL DEFAULT now(),
+ PRIMARY KEY(store_code,old_sku)
+);
+ALTER TABLE public.tsi_so_inventory_dedup_backup_032 ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.tsi_so_inventory_dedup_backup_032 FROM PUBLIC,anon,authenticated;
+
+INSERT INTO public.tsi_so_inventory_dedup_backup_032(store_code,old_sku,name_key,full_row)
+SELECT store_code,old_sku,name_key,full_row FROM _nm032_candidates WHERE row_no=2;
+
+-- Simpan alias lama di TEMP table agar BA dan riwayat scope juga termigrasi.
+CREATE TEMP TABLE _nm032_removed_alias ON COMMIT DROP AS
+SELECT store_code, old_sku, name_key FROM _nm032_candidates WHERE row_no=2;
+CREATE UNIQUE INDEX ON _nm032_removed_alias(store_code,old_sku);
+
+DO $dedup_delete$ DECLARE v_deleted integer; BEGIN
+ DELETE FROM public.tsi_so_inventory i
+ USING _nm032_removed_alias r
+ WHERE i.store_code=r.store_code AND i.sku=r.old_sku;
+ GET DIAGNOSTICS v_deleted=ROW_COUNT;
+ IF v_deleted<>11 THEN
+  RAISE EXCEPTION '032 revisi: pengurangan inventory tidak sesuai (%, semestinya 11). Semua perubahan dibatalkan.',v_deleted;
+ END IF;
+END $dedup_delete$;
+
+INSERT INTO public.tsi_so_audit(user_id,store_code,event,meta)
+SELECT NULL,c.store_code,'ITEM_NAME_DUPLICATE_RESOLVED_032',
+ jsonb_build_object('kept_sku_before_032',max(c.old_sku) FILTER(WHERE c.row_no=1),
+  'removed_sku_before_032',max(c.old_sku) FILTER(WHERE c.row_no=2),
+  'name_key',c.name_key,'removed_ending',0,'note','Backup di tsi_so_inventory_dedup_backup_032')
+FROM _nm032_candidates c GROUP BY c.store_code,c.name_key;
+-- ================= AKHIR PERBAIKAN DUPLIKAT =================
+
 
 DO $required$ BEGIN
  IF to_regprocedure('public.tsi_so_upload(text,jsonb)') IS NULL OR
@@ -29,7 +144,9 @@ CREATE TEMP TABLE _nm032_source ON COMMIT DROP AS
  FROM public.tsi_so_inventory i
  UNION ALL
  SELECT c.store_code, l.sku, public.tsi_so_name_key(l.item_name)
- FROM public.tsi_so_lines l JOIN public.tsi_so_cycles c ON c.id=l.cycle_id;
+ FROM public.tsi_so_lines l JOIN public.tsi_so_cycles c ON c.id=l.cycle_id
+ UNION ALL
+ SELECT r.store_code, r.old_sku, r.name_key FROM _nm032_removed_alias r;
 CREATE INDEX ON _nm032_source(store_code,old_sku);
 
 DO $guard$ DECLARE conflict text; BEGIN
