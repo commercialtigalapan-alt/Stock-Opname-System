@@ -18,6 +18,11 @@ const lines=[
 ];
 const printable=context.baArticle(h,s,lines,2,true);
 assert(printable.includes('<th>Alasan</th>'));
+assert(!printable.includes('<th class="num">Nilai selisih</th>'));
+assert(printable.includes('<td class="ba-item-name">Kaos Hitam L</td>'));
+assert.equal((printable.match(/<col style=/g)||[]).length,6);
+assert.equal((printable.match(/<th(?: class="num")?>/g)||[]).length,6);
+assert(printable.includes('<td class="num">-2</td>'));
 assert(printable.includes('Picking salah &lt;3 pcs&gt;'));
 assert(printable.includes('Retur belum tercatat'));
 assert(!printable.includes('data-change="ba-reason"'));

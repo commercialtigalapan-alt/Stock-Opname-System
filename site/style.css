@@ -1246,11 +1246,20 @@ body{-webkit-font-smoothing:antialiased}
 @media (max-width:420px){.xcalc .xk{font-size:24px}.xcalc .xcalc-expr{font-size:38px}}
 
 /* ===== BA: alasan per SKU (editable sebelum disahkan SPV) ===== */
-.ba-reason-cell{min-width:210px;max-width:320px;white-space:normal;overflow-wrap:anywhere;font-size:12px;vertical-align:top}
-.ba-reason-editor{width:100%;min-width:190px;min-height:58px;resize:vertical;box-sizing:border-box;font:inherit;line-height:1.4}
+/* BA detail: lebar kolom Nilai Selisih dialihkan ke Nama Item.
+   Kolom System/Actual/Selisih (qty) tetap dipertahankan untuk audit. */
+.ba-lines table{table-layout:fixed;min-width:820px}
+.ba-lines th,.ba-lines td{padding:7px 7px}
+.ba-lines th{letter-spacing:0;font-size:10.5px}
+.ba-lines td:first-child{overflow-wrap:anywhere}
+.ba-item-name{white-space:normal;overflow-wrap:break-word;vertical-align:top}
+.ba-reason-cell{min-width:0;max-width:none;white-space:normal;overflow-wrap:anywhere;font-size:12px;vertical-align:top}
+.ba-reason-editor{width:100%;min-width:0;min-height:58px;resize:vertical;box-sizing:border-box;font:inherit;line-height:1.4}
 .ba-reason-print{display:none;white-space:pre-wrap}
 .ba-reason-static{white-space:pre-wrap}
 @media print{
  .ba-reason-print{display:inline!important}
  .ba-reason-cell{min-width:0;max-width:none}
+ .ba-lines table{min-width:0;width:100%;table-layout:fixed}
+ .ba-lines th,.ba-lines td{padding:5px 5px}
 }

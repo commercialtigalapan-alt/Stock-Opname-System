@@ -97,3 +97,12 @@ menimpa perubahan ini.
 
 Smoke test lokal: `node --check --input-type=module < site/app.js`,
 `node tests/test_csv.cjs`, dan `node tests/test_ba_reason.cjs`.
+
+
+## Update layout BA — Nama Item lebih lebar (2026-11-02)
+
+- Menghapus **kolom Nilai selisih (rupiah)** hanya pada daftar SKU selisih di detail BA, cetak/PDF, dan HTML unduhan.
+- Melebarkan **Nama item** (38% dari tabel) dengan tata letak 6 kolom; di layar kecil tabel digeser horizontal agar tidak terlalu banyak memecah nama item ke beberapa baris.
+- Kolom SKU, System, Actual, Selisih (qty), dan Alasan tetap ada. Nilai uang pada ringkasan BA dan perhitungan dashboard **tidak berubah**.
+- Perubahan ini hanya pada `site/app.js`, `site/style.css`, dan cache pada `site/index.html`. **Tidak memerlukan migrasi SQL baru** (migrasi 025 tetap dibutuhkan jika belum dipasang).
+- Jalankan `node tests/test_ba_reason.cjs` dan `node tests/test_csv.cjs`; lalu publish folder `site/` seperti biasa.
