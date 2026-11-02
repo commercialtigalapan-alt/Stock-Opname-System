@@ -172,3 +172,8 @@ from public.tsi_so_ba_sku_revision order by corrected_at desc limit 100;
 7. Untuk menghilangkan PENDING, lengkapi SKU resmi di sumber Moka Item Library lalu jalankan pembaruan pemetaan dan migrasi identitas yang aman. Jangan sekadar mengganti teks ID sementara dengan SKU baru secara manual di database.
 
 **Keamanan data:** `tsi_so_upload_check` hanya dapat digunakan user dengan akses toko tersebut. Resolver internal tidak dapat dipanggil langsung oleh role authenticated. Test lokal: `node tests/test_upload_pending.cjs`. SQL belum diuji di Supabase produksi, lakukan pilot/backup dan cocokkan total stok.
+
+
+## Hotfix 029 - Upload & Ganti Inventory (2 Nov 2026)
+
+Jika muncul pesan `DELETE requires a WHERE clause` saat tombol **Upload & Ganti Inventory** diklik, jalankan `supabase/migrations/202611020029_fix_upload_delete_where.sql` di Supabase SQL Editor setelah migrasi 028. Perintah pembersihan tabel sementara dalam `tsi_so_upload` diubah dari `DELETE FROM pg_temp._up028_rekey` menjadi `TRUNCATE TABLE pg_temp._up028_rekey`. Hanya objek sementara yang dikosongkan. Tidak ada perubahan frontend, dan tidak perlu mengganti data inventory secara manual. Backup database sebelum perbaikan. Setelah SQL berhasil, ulangi upload dengan CSV yang sama dan periksa jumlah SKU & riwayat upload.
