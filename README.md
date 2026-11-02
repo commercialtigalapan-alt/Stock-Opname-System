@@ -157,3 +157,18 @@ from public.tsi_so_ba_sku_revision order by corrected_at desc limit 100;
 - Pada perangkat sempit, hanya tabel yang dapat digeser horizontal; fungsi kalkulator, input, dan status tidak diubah.
 - Cache CSS/JS di `site/index.html` dinaikkan ke `20261102-fit-count-v030`. Setelah deploy, lakukan hard refresh bila perlu.
 - Pembaruan ini hanya frontend; tidak perlu menjalankan migrasi Supabase baru.
+
+## Update 028 — Upload Inventory ketika sebagian item tidak memiliki SKU resmi (2 November 2026)
+
+**Masalah:** Migrasi 026 sengaja menolak seluruh upload ketika satu atau lebih nama item tidak memiliki SKU resmi pada Item Library. Contoh `ABU MISTY + RIB 2XL` dari screenshot tidak ada dalam Item Library yang diunggah; melewati baris ini diam-diam akan mengurangi stok saat inventory diganti.
+
+**Solusi 028:**
+1. Wajib backup dahulu. Pastikan migrasi 025, 026, dan 027 yang diperlukan sudah dipasang, lalu jalankan `supabase/migrations/202611020028_upload_inventory_pending_sku.sql` **sekali** di Supabase SQL Editor.
+2. Deploy `site/` dari paket ini ke GitHub Pages (cache `v031`).
+3. Saat memilih CSV di menu Upload Inventory, aplikasi meminta preview ke server: jumlah SKU resmi dari Item Library, kode eksplisit dari CSV, dan identitas PENDING; tersedia ekspor CSV seluruh item yang belum memiliki SKU.
+4. Jika belum ada SKU resmi, item **tidak dihapus**. Sumber Item Library tanpa SKU mendapat ID sementara `PENDING-<Internal ID Variant>`, item yang tidak ada di Item Library mendapat `PENDING-N<MD5 NAMA NORMALISASI>`. ID tersebut bukan SKU resmi untuk Moka dan ditampilkan sebagai `SKU PENDING` di Counting/Validasi.
+5. Sistem meminta konfirmasi kembali sebelum **mengganti semua inventory**. SO dalam status COUNTING/RECOUNT yang memakai nama item sebagai SKU atau ID PENDING dikonversi ke identitas baru tanpa mengubah hasil hitung/alasan/team; stok sistem diperbarui. Jadwal yang belum dimulai menyesuaikan daftar scope SKU. SO SUBMITTED dan APPROVED tidak dikoreksi oleh upload, begitu pula BA historis.
+6. Jika ada SKU duplikat atau konflik pada SO aktif, transaksi akan dibatalkan untuk menjaga integritas. Setelah upload, operator wajib memuat ulang Counting/Validasi agar kode SKU pada halaman aktif mengikuti update database.
+7. Untuk menghilangkan PENDING, lengkapi SKU resmi di sumber Moka Item Library lalu jalankan pembaruan pemetaan dan migrasi identitas yang aman. Jangan sekadar mengganti teks ID sementara dengan SKU baru secara manual di database.
+
+**Keamanan data:** `tsi_so_upload_check` hanya dapat digunakan user dengan akses toko tersebut. Resolver internal tidak dapat dipanggil langsung oleh role authenticated. Test lokal: `node tests/test_upload_pending.cjs`. SQL belum diuji di Supabase produksi, lakukan pilot/backup dan cocokkan total stok.

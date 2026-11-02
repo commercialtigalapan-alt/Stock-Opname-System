@@ -13,6 +13,7 @@ const state={me:null,stores:[],dashboard:[],page:'dashboard',store:'',online:tru
  validation:{offset:0,search:'',filter:'VARIANCE',status:'ALL',data:null,open:false,cycle:'',listQ:'',rows:[]},
  builder:null,cov:{store:'',filter:'ALL',search:'',offset:0,data:null}};
 let upRows=[];
+let upCheck=null;
 let inflight=0;
 let calc=null;
 
@@ -934,7 +935,7 @@ function uploadPanelHTML(s){
  return `<details class="card up-panel" id="upPanel" open><summary><b>⬆ Upload Inventory</b><span class="muted small">Ganti inventory aktif toko. SO yang sudah SUBMITTED tidak ikut berubah.</span></summary>
   <div class="up-body">
    ${canManage()?`<select class="input select" data-change="up-store">${storeOptions(state.store,false)}</select>`:`<span class="chip blue"><i></i>${escapeHTML(labelStore(state.store))}</span>`}
-   <label class="dropzone"><b>⬆ Pilih File CSV Inventory Summary</b><small>Name - Variant, Category, Ending. SKU otomatis dari Item Library jika nama item cocok. Cost dan Harga Retail opsional.</small><input type="file" id="fileInput" accept=".csv,text/csv" data-change="file-pick"/></label>
+   <label class="dropzone"><b>⬆ Pilih File CSV Inventory Summary</b><small>Name - Variant, Category, Ending. SKU dicocokkan ke Item Library; item tanpa SKU diberi ID PENDING dan ditampilkan sebelum konfirmasi. Cost dan Harga Retail opsional.</small><input type="file" id="fileInput" accept=".csv,text/csv" data-change="file-pick"/></label>
    <div id="fileInfo" class="small muted">Belum ada file dipilih.</div>
    <div id="retailPreview"></div>
    <div class="row">${btn('Upload & Ganti Inventory','do-upload','primary')}</div>
@@ -977,8 +978,9 @@ function statusCell(status,reason){
 // SKU tidak ditemukan diberi penanda, bukan menampilkan Item Name sebagai kode resmi.
 function skuTableCell(x){
  const sku=String(x.sku||'').trim(), name=String(x.name||'').trim();
- const missing=!sku || sku.toUpperCase()===name.toUpperCase();
- return `<td class="sku-col">${missing?'<span class="sku-missing" title="Belum ada SKU resmi pada data SO">Belum ada SKU</span>':`<span class="sku-code" title="${escapeHTML(sku)}">${escapeHTML(sku)}</span>`}</td>`;
+ const isPending=sku.toUpperCase().startsWith('PENDING-');
+ const missing=!sku || sku.toUpperCase()===name.toUpperCase() || isPending;
+ return `<td class="sku-col">${missing?`<span class="sku-missing" title="${isPending?`ID sementara: ${escapeHTML(sku)}. Lengkapi Item Library.`:'SKU lama belum terpetakan ke Item Library.'}">SKU PENDING</span>`:`<span class="sku-code" title="${escapeHTML(sku)}">${escapeHTML(sku)}</span>`}</td>`;
 }
 function countRowHTML(x,edit){
  const needsReason=x.status==='SELISIH'&&!(x.reason||'').trim();
@@ -1450,36 +1452,61 @@ async function showUpload(){
   <div class="card-head"><div><h3>Upload Inventory</h3><p class="muted small">File CSV mengganti inventory aktif toko. Inventory tidak dikunci: system qty SO yang sedang berjalan (COUNTING/RECOUNT) ikut diperbarui. SO yang sudah SUBMITTED dikunci.</p></div>
    ${canManage()?`<select class="input select" data-change="up-store">${storeOptions(state.store,false)}</select>`:`<span class="chip blue"><i></i>${escapeHTML(labelStore(state.store))}</span>`}</div>
   <div class="note warning">Cost/HPP harus berasal dari sumber resmi agar Value Accuracy valid.</div>
-  <label class="dropzone"><b>⬆ Pilih File CSV Inventory Summary</b><small>Name - Variant, Category, Ending. SKU otomatis dari Item Library jika nama item cocok. Cost dan Harga Retail opsional.</small><input type="file" id="fileInput" accept=".csv,text/csv" data-change="file-pick"/></label>
+  <label class="dropzone"><b>⬆ Pilih File CSV Inventory Summary</b><small>Name - Variant, Category, Ending. SKU dicocokkan ke Item Library; item tanpa SKU diberi ID PENDING dan ditampilkan sebelum konfirmasi. Cost dan Harga Retail opsional.</small><input type="file" id="fileInput" accept=".csv,text/csv" data-change="file-pick"/></label>
   <div id="fileInfo" class="small muted">Belum ada file dipilih.</div>
   <div id="retailPreview"></div>
   <div class="row">${btn('Upload & Ganti Inventory','do-upload','primary')}</div>
   <p class="footerhint">Inventory aktif sekarang: ${n(s?.inventory_count||0)} SKU. Maksimal 10.000 SKU per file. Baris Ending negatif dilewati otomatis.</p>
  </div>
  <div class="card" id="uploadHistory"></div>`;
- upRows=[];
+ upRows=[];upCheck=null;
  loadUploadHistory().catch(()=>{});
 }
 CHG['up-store']=async el=>{state.store=el.value;await refreshDashboard();await render()};
 CHG['file-pick']=async el=>{
- try{const file=el.files[0];if(!file)return;if(file.size>3*1024*1024)throw Error('File >3MB. Pecah atau rapikan file sebelum upload.');
-  upRows=importRows(await file.text());renderRetailPreview(upRows);
-  if($('#fileInfo'))$('#fileInfo').textContent=`Siap upload: ${n(upRows.length)} item; SKU contoh ${upRows[0]?.sku||'dicocokkan di server'}${upRows.skipped?`; ${n(upRows.skipped)} baris Ending negatif dilewati`:''}`;
- }catch(ex){upRows=[];if($('#retailPreview'))$('#retailPreview').innerHTML='';if($('#fileInfo'))$('#fileInfo').textContent=ex.message;toast(ex.message,true)}
+ try{
+  upRows=[];upCheck=null;
+  const file=el.files[0];if(!file)return;
+  if(file.size>3*1024*1024)throw Error('File >3MB. Pecah atau rapikan file sebelum upload.');
+  upRows=importRows(await file.text());
+  if(!upRows.length)throw Error('Tidak ada item valid dengan Ending >= 0.');
+  if($('#fileInfo'))$('#fileInfo').textContent=`Mencocokkan ${n(upRows.length)} item dengan Item Library di Supabase...`;
+  upCheck=await rpc('upload_check',{p_store:state.store,p_rows:upRows});
+  renderRetailPreview(upRows,upCheck);
+  if($('#fileInfo'))$('#fileInfo').textContent=`Siap: ${n(upCheck.total)} item | ${n(upCheck.official)} SKU resmi | ${n(upCheck.from_file)} SKU dari file | ${n(upCheck.pending)} SKU sementara (PENDING)${upRows.skipped?` | ${n(upRows.skipped)} Ending negatif dilewati`:''}.`;
+ }catch(ex){upRows=[];upCheck=null;if($('#retailPreview'))$('#retailPreview').innerHTML='';if($('#fileInfo'))$('#fileInfo').textContent=ex.message;toast(ex.message,true)}
+};
+ACT['download-pending-sku']=()=>{
+ if(!upCheck?.pending_items?.length)throw Error('Tidak ada daftar SKU sementara.');
+ const rows=[['Nama Item','Category','Ending','ID Sementara','Sumber']];
+ for(const x of upCheck.pending_items)rows.push([x.name,x.category,x.ending,x.sku,x.source==='pending_library'?'Item Library tanpa SKU':'Belum ada di Item Library']);
+ const csv='\uFEFF'+rows.map(r=>r.map(v=>'"'+String(v??'').replaceAll('"','""')+'"').join(',')).join('\r\n');
+ baSaveFile(csv,'SKU_BELUM_TERSEDIA_'+iso(new Date())+'.csv','text/csv;charset=utf-8');
 };
 ACT['do-upload']=async()=>{
- if(!upRows.length)throw Error('Pilih CSV valid terlebih dahulu.');
- if(!confirm(`Ganti SEMUA inventory aktif ${labelStore(state.store)} dengan ${upRows.length} SKU?`))return;
+ if(!upRows.length||!upCheck)throw Error('Pilih file dan tunggu validasi SKU dari server selesai.');
+ const pending=Number(upCheck.pending||0);
+ const msg=`Ganti SEMUA inventory aktif ${labelStore(state.store)} dengan ${n(upRows.length)} item?\n\n`+
+  `${n(upCheck.official)} SKU resmi Item Library, ${n(upCheck.from_file)} SKU dari CSV, ${n(pending)} memakai ID sementara PENDING.\n`+
+  (pending?'Item PENDING tetap dihitung dalam inventory dan SO, tetapi bukan SKU resmi. Unduh daftar perbaikannya bila diperlukan.\n\n':'\n')+
+  `Counting yang belum submit dapat mengikuti update inventory. Periksa file dan backup dahulu.`;
+ if(!confirm(msg))return;
  const out=await rpc('upload',{p_store:state.store,p_rows:upRows});
- toast(`Upload berhasil: ${n(out.sku_count)} SKU (${n(out.sku_auto_from_library||0)} dicocokkan dari Item Library). ${n(out.synced_lines)} baris SO aktif diperbarui${out.locked_lines?`, ${n(out.locked_lines)} baris SO SUBMITTED dikunci`:''}.`);upRows=[];$('#upPanel')?.remove();await refreshDashboard();await render();
+ toast(`Upload berhasil: ${n(out.sku_count)} item; ${n(out.sku_auto_from_library||0)} SKU resmi, ${n(out.pending_sku||0)} PENDING; ${n(out.synced_lines)} baris SO diperbarui.`);
+ upRows=[];upCheck=null;await refreshDashboard();await render();
 };
-function renderRetailPreview(rows){
+function renderRetailPreview(rows,check){
  const box=$('#retailPreview');if(!box)return;
  const zero=rows.filter(x=>x.retail===0).length;
  const cell=(l,v)=>`<div class="db-tile"><small>${l}</small><b>${v}</b></div>`;
- box.innerHTML=`<div class="db-grid">${cell('Item',n(rows.length))}${cell('Harga Retail 0',n(zero))}${cell('Dilewati (Ending negatif)',n(rows.skipped||0))}</div>
- <div class="tablewrap"><table><thead><tr><th>Item</th><th>SKU (file)</th><th>Category</th><th class="num">Ending</th><th class="num">Harga Retail</th></tr></thead><tbody>${rows.slice(0,80).map(x=>`<tr><td>${escapeHTML(x.name)}</td><td class="mono">${x.sku?escapeHTML(x.sku):'<span class="muted">Cocokkan Item Library</span>'}</td><td>${escapeHTML(x.category)}</td><td class="num">${n(x.ending)}</td><td class="num">${n(x.retail)}</td></tr>`).join('')}</tbody></table></div>
- <p class="small muted">Menampilkan 80 baris pertama dari ${n(rows.length)} item.</p>`;
+ const pending=check?.pending_items||[];
+ box.innerHTML=`<div class="db-grid">${cell('Total Item',n(rows.length))}${cell('SKU Resmi',n(check?.official||0))}${cell('SKU dari CSV',n(check?.from_file||0))}${cell('SKU Pending',n(check?.pending||0))}</div>
+ ${pending.length?`<div class="note warning"><b>${n(pending.length)} item belum memiliki SKU resmi.</b> Item tersebut akan disimpan dengan identitas teknis sementara berawalan <b>PENDING-</b>, bukan dengan Nama Item sebagai SKU. Lihat daftar sebelum upload. <button type="button" class="btn outline sm" data-act="download-pending-sku">⬇ Download daftar SKU belum tersedia (CSV)</button>
+ <div class="tablewrap" style="margin-top:10px"><table><thead><tr><th>Nama Item belum terpetakan</th><th>Identitas sementara</th><th>Asal</th></tr></thead><tbody>${pending.slice(0,15).map(x=>`<tr><td>${escapeHTML(x.name)}</td><td class="mono">${escapeHTML(x.sku)}</td><td>${x.source==='pending_library'?'Item Library tanpa SKU':'Tidak ada di Item Library'}</td></tr>`).join('')}</tbody></table></div>
+ <small>Menampilkan 15 contoh. Unduh CSV untuk daftar lengkap.</small></div>`:'<div class="note info">Semua item mempunyai kode SKU dari Item Library atau CSV.</div>'}
+ <div class="db-grid">${cell('Harga Retail 0',n(zero))}${cell('Dilewati (Ending negatif)',n(rows.skipped||0))}</div>
+ <div class="tablewrap"><table><thead><tr><th>Item</th><th>SKU hasil pemetaan</th><th>Category</th><th class="num">Ending</th><th class="num">Harga Retail</th></tr></thead><tbody>${rows.slice(0,80).map((x,i)=>`<tr><td>${escapeHTML(x.name)}</td><td class="mono">${check?.sample?.[i]?.sku?escapeHTML(check.sample[i].sku):(x.sku?escapeHTML(x.sku):'<span class="muted">Dicek ke Item Library</span>')}</td><td>${escapeHTML(x.category)}</td><td class="num">${n(x.ending)}</td><td class="num">${n(x.retail)}</td></tr>`).join('')}</tbody></table></div>
+ <p class="small muted">Menampilkan 80 baris pertama dari ${n(rows.length)} item. Identitas final ditentukan di server sesuai preview.</p>`;
 }
 async function loadUploadHistory(){
  const box=$('#uploadHistory');if(!box)return;
