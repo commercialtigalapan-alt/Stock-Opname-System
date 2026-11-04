@@ -1,3 +1,5 @@
+> **Update v37 — 4 November 2026:** Perbaikan error `DELETE requires a WHERE clause` pada Sinkronisasi Rasio; buka kunci item sekali pakai oleh Master/Admin; statistik warna berbasis rasio item; audit semua toko. Lihat `PANDUAN_034_BUKA_KUNCI_MASTER.md` dan migrasi `202611040034_master_item_unlock_and_coverage_fix.sql`. Jangan mengubah rasio historis tanpa audit.
+
 # SO Tigalapan — Supabase + GitHub Pages
 
 Aplikasi web Stock Opname untuk 12 toko Tigalapan Indonesia. **Satu aplikasi, satu database PostgreSQL dengan `store_code` pada tiap inventaris dan siklus SO**. Role STORE, SPV, ADMIN dibatasi oleh backend RPC. Proyek SQL hanya membuat tabel/fungsi prefix `tsi_so_` agar tidak mengganggu tabel aplikasi lainnya.

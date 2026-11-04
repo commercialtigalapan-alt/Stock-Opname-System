@@ -32,5 +32,5 @@ assert.equal(rows.length,10);assert.equal(rows.deduplicated,10);
 assert(js.includes("ACT['up-conflicts-csv']"));
 assert(js.includes('duplikat aman dirapikan'));
 const index=fs.readFileSync(path.join(root,'site/index.html'),'utf8');
-assert(index.includes('20261102-upload-dedupe-v036'));
+assert(/master-unlock-v037|upload-dedupe-v036/.test(index));
 console.log('Upload duplicate normalization v36: PASS (0-value duplicates, nonzero preservation, metadata conflicts, full Toraja sample)');

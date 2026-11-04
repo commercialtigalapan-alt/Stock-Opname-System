@@ -29,7 +29,7 @@ const $=sel=>document.querySelector(sel);
 const $$=sel=>Array.from(document.querySelectorAll(sel));
 const toast=(s,isErr=false)=>{const el=$('#toast');el.textContent=s;el.className='toast'+(isErr?' error':'');clearTimeout(el._t);el._t=setTimeout(()=>el.classList.add('hidden'),5500)};
 const busy=d=>{inflight=Math.max(0,inflight+d);const p=$('#progress');if(p)p.classList.toggle('on',inflight>0)};
-const SYNC_RPCS=new Set(['upload','start','start_cycle','submit','approve','recount','validate_edit','validate_line','schedule_create','schedule_update','schedule_delete','archive_cycles','hard_delete','unlock','ba_sign','ba_sign_bulk','ba_reason_set','ba_adjust','ba_adjust_bulk','ba_clean','assign_user','set_store_spv','set_store_area','rounds_resync','activate_user']);
+const SYNC_RPCS=new Set(['upload','start','start_cycle','submit','approve','recount','validate_edit','validate_line','schedule_create','schedule_update','schedule_delete','archive_cycles','hard_delete','unlock','ba_sign','ba_sign_bulk','ba_reason_set','ba_adjust','ba_adjust_bulk','ba_clean','assign_user','set_store_spv','set_store_area','rounds_resync','item_lock_override','activate_user']);
 const rpc=async(name,args={})=>{busy(1);try{const {data,error}=await sb.rpc('tsi_so_'+name,args);if(error){if(!error.code)state.online=false;throw new Error(error.message||'Terjadi kesalahan server')}state.online=true;if(SYNC_RPCS.has(name))notifySync(name,args.p_store||null);return data}finally{busy(-1)}};
 const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 const isoUTC=d=>d.toISOString().slice(0,10);
@@ -698,7 +698,7 @@ function colorPanelHTML(owner,cat,set,list){
    const checked=!!set&&set.has(x.color);const hex=colorHex(x.color);const dk=isDarkHex(hex);
    const elig=x.eligible_count??x.sku_count;const locked=x.sku_count-elig;
    const style=dk?`background:${hex};border-color:${hex}`:`background:linear-gradient(90deg,${hex}40,${hex}14);border-color:${hex}88`;
-   return `<label class="crow ${checked?'on':''} ${dk?'dk':''}" style="${style}"><span class="crow-top"><input type="checkbox" data-change="b-color" data-owner="${escapeHTML(owner)}" data-cat="${escapeHTML(cat)}" value="${escapeHTML(x.color)}" ${checked?'checked':''}/><span class="cname">${escapeHTML(x.color)}</span></span><span class="crow-bot"><small>${n(elig)} bisa di-SO${locked>0?` · ${n(locked)} terkunci`:''}</small><em>${x.so_count?n(x.so_count)+'x SO':'Belum SO'}</em></span></label>`}).join('')}</div></div>`;
+   return `<label class="crow ${checked?'on':''} ${dk?'dk':''}" style="${style}"><span class="crow-top"><input type="checkbox" data-change="b-color" data-owner="${escapeHTML(owner)}" data-cat="${escapeHTML(cat)}" value="${escapeHTML(x.color)}" ${checked?'checked':''}/><span class="cname">${escapeHTML(x.color)}</span></span><span class="crow-bot"><small>${n(elig)} bisa di-SO${locked>0?` · ${n(locked)} terkunci`:''}</small><em title="Berdasarkan rasio item, bukan jumlah jadwal GRAND lama">${n(x.belum_count??0)} belum SO · ${n(x.sudah_count??0)} sudah SO</em></span></label>`}).join('')}</div></div>`;
 }
 function catBlockHTML(b,owner,cat,scope){
  const on=scope.cats.has(cat);const set=scope.cats.get(cat);const list=b.stats.get(cat);
@@ -1604,43 +1604,68 @@ async function loadAudit(){
 /* ---------- Mulai ---------- */
 (async()=>{const {data:{session}}=await sb.auth.getSession();if(session)await start();else loginView()})();
 
-/* ---------- Cakupan Item: rasio SO per SKU dan status bisa dipilih / terkunci ---------- */
+/* ---------- Cakupan Item: rasio historis dan izin sekali pakai oleh Master ---------- */
 async function showCoverage(){
  const c=state.cov;
  if(state.me.role==='store')c.store=state.me.store_code;
  else if(!c.store)c.store=state.store||state.stores[0]?.code||'';
+ c.sel=c.sel||new Set();
  const d=await rpc('sku_coverage',{p_store:c.store,p_filter:c.filter,p_search:c.search,p_offset:c.offset,p_limit:50});c.data=d;
  const s2=d.summary||{};const pct=s2.total?Math.round(100*s2.sudah/s2.total):0;
  const mini=(cls,l,val,sub)=>`<div class="mini ${cls}"><small>${l}</small><b>${val}</b><span>${sub}</span></div>`;
- const filters=[['ALL','Semua'],['BELUM','Belum di-SO'],['SUDAH','Sudah di-SO'],['DIPILIH','Bisa dipilih'],['TERKUNCI','Terkunci']];
- $('#content').innerHTML=`${isAdmin()?`<div class="card"><div class="card-head"><h3>Sinkronisasi Rasio</h3><span class="muted small">Pakai jika ada item terkunci karena rasio dari SO yang sudah dihapus</span></div><div class="row">${btn('Cek Perubahan','cov-sync-check','outline')}${btn('Terapkan Sinkronisasi','cov-sync-apply','danger')}</div><div id="covSync" class="note info small">Klik Cek Perubahan untuk melihat rasio yang akan berubah sebelum diterapkan.</div></div>`:''}
+ const filters=[['ALL','Semua'],['BELUM','Belum di-SO'],['SUDAH','Sudah di-SO'],['DIPILIH','Bisa dipilih'],['TERKUNCI','Terkunci'],['DIBUKA','Dibuka Master']];
+ $('#content').innerHTML=`${isAdmin()?`<div class="card"><div class="card-head"><h3>Audit Rasio SO</h3><span class="muted small">Periksa sebelum sinkronisasi; histori arsip tidak boleh dihapus</span></div><div class="row">${btn('Cek Rasio','cov-sync-check','outline')}${btn('Sinkronkan (hanya jika aman)','cov-sync-apply','outline')}</div><div id="covSync" class="note info small">Klik Cek Rasio. Jika detail historis sudah dibersihkan, gunakan Buka Kunci Master, bukan reset rasio.</div></div>`:''}
  <div class="card filter-card"><div class="filters">
    ${state.me.role!=='store'?`<select class="input select" data-change="cov-store">${storeOptions(c.store,false)}</select>`:`<span class="chip blue">${escapeHTML(labelStore(c.store))}</span>`}
    <input id="covSearch" class="input grow" placeholder="Cari nama item" value="${escapeHTML(c.search)}"/>
    ${btn('Cari','cov-find','outline')}${rstHTML('cov')}
   </div>
-  <div class="note info">Aturan: setiap item harus ter-SO sekali sebelum dapat dipilih kembali. Rasio = jumlah SO selesai yang memuat Nama Item tersebut.</div></div>
+  <div class="note info">Item dengan rasio 0x selalu bisa dipilih. Item dengan rasio lebih tinggi dapat terkunci oleh aturan putaran; Master bisa membukanya untuk satu SO tambahan. Rasio historis dan BA tidak berubah.</div></div>
  <div class="mini-row">
-   ${mini('','Total Item',n(s2.total),'Seluruh Item toko')}
-   ${mini('g','Sudah di-SO',n(s2.sudah),pct+'% dari total')}
-   ${mini('a','Belum di-SO',n(s2.belum),'Rasio 0x')}
-   ${mini('o','Bisa dipilih sekarang',n(s2.dipilih),'Rasio terendah '+n(s2.min_ratio)+'x')}
-   ${mini('r','Terkunci',n(s2.terkunci),'Menunggu item lain naik rasio')}
+   ${mini('','Total Item',n(s2.total),'Seluruh item toko')}
+   ${mini('g','Tercatat pernah SO',n(s2.sudah),pct+'% dari total')}
+   ${mini('a','Belum tercatat SO',n(s2.belum),'Rasio 0x · selalu bisa dipilih')}
+   ${mini('o','Bisa dipilih',n(s2.dipilih),'Termasuk izin Master')}
+   ${mini('r','Terkunci',n(s2.terkunci),'Belum mendapat izin baru')}
+   ${mini('g','Dibuka Master',n(s2.dibuka),'Izin sekali pakai aktif')}
  </div>
  <div class="card">
   <div class="seg">${filters.map(([v,l])=>`<button class="${c.filter===v?'on':''}" data-act="cov-filter" data-v="${v}">${l}</button>`).join('')}</div>
-  <div class="tablewrap" style="margin-top:10px"><table class="cov-table"><thead><tr><th>Item & Warna</th><th class="num">Rasio</th><th>Status SO</th><th>Pemilihan</th></tr></thead><tbody>
-  ${(d.items||[]).map(x=>`<tr><td class="nm">${nameBadge(x.name,x.category)}</td><td class="num"><span class="ratio ${x.ratio?'r1':'r0'}">${n(x.ratio)}x</span></td><td>${x.status==='SUDAH'?chip('TALLY','SUDAH SO'):chip('BELUM','BELUM SO')}</td><td>${x.eligible?'<span class="chip blue"><i></i>Bisa dipilih</span>':'<span class="chip red"><i></i>Terkunci</span>'}</td></tr>`).join('')||'<tr><td colspan="4" class="empty">Tidak ada item pada filter ini.</td></tr>'}
+  ${isAdmin()?`<div class="row cov-bulk"><b id="covSelCount">${n(c.sel.size)} item dipilih</b>${btn('Buka Kunci Pilihan','cov-unlock-selected','primary')}${btn('Cabut Izin Pilihan','cov-lock-selected','outline')}<span class="small muted">Maksimal 50 item sekali tindakan. Pilih hanya item pada toko ini.</span></div>`:''}
+  <div class="tablewrap" style="margin-top:10px"><table class="cov-table"><thead><tr>${isAdmin()?'<th>Pilih</th>':''}<th>Item & Warna</th><th class="num">Rasio</th><th>Status Riwayat</th><th>Status Pemilihan</th>${isAdmin()?'<th>Aksi Master</th>':''}</tr></thead><tbody>
+  ${(d.items||[]).map(x=>`<tr>${isAdmin()?`<td><input type="checkbox" data-change="cov-pick" value="${escapeHTML(x.sku)}" ${c.sel.has(x.sku)?'checked':''} aria-label="Pilih ${escapeHTML(x.name)}"/></td>`:''}<td class="nm">${nameBadge(x.name,x.category)}</td><td class="num"><span class="ratio ${x.ratio?'r1':'r0'}">${n(x.ratio)}x</span></td><td>${x.status==='SUDAH'?chip('TALLY','TERCATAT SUDAH'):chip('BELUM','BELUM SO')}</td><td>${x.unlocked?'<span class="chip green"><i></i>Dibuka Master</span>':x.eligible?'<span class="chip blue"><i></i>Bisa dipilih</span>':'<span class="chip red"><i></i>Terkunci</span>'}</td>${isAdmin()?`<td>${x.unlocked?btn('Cabut','cov-lock','outline',{sku:x.sku}):x.ratio>0?btn('Buka Kunci','cov-unlock','outline',{sku:x.sku}):'<span class="muted small">Tidak perlu</span>'}</td>`:''}</tr>`).join('')||`<tr><td colspan="${isAdmin()?6:4}" class="empty">Tidak ada item pada filter ini.</td></tr>`}
   </tbody></table></div>
   <div class="pager"><span class="small muted">${n(d.total_filtered?c.offset+1:0)}–${n(Math.min(c.offset+50,d.total_filtered))} dari ${n(d.total_filtered)} item</span><div class="row">${btn('← Sebelumnya','cov-prev','outline')}${btn('Berikutnya →','cov-next','outline')}</div></div>
  </div>`;
 }
-CHG['cov-store']=async el=>{const c=state.cov;c.store=el.value;c.offset=0;c.search='';await showCoverage()};
-ACT['cov-filter']=async el=>{const c=state.cov;c.filter=el.dataset.v;c.offset=0;await showCoverage()};
-ACT['cov-find']=async()=>{const c=state.cov;c.search=$('#covSearch').value.trim();c.offset=0;await showCoverage()};
-ACT['cov-clear']=async()=>{const c=state.cov;c.search='';c.filter='ALL';c.offset=0;await showCoverage()};
-ACT['cov-prev']=async()=>{const c=state.cov;c.offset=Math.max(0,c.offset-50);await showCoverage()};
-ACT['cov-next']=async()=>{const c=state.cov;if(!c.data||c.offset+50>=c.data.total_filtered)return;c.offset+=50;await showCoverage()};
+const covClearSelection=()=>{state.cov.sel=new Set()};
+CHG['cov-store']=async el=>{const c=state.cov;c.store=el.value;c.offset=0;c.search='';covClearSelection();await showCoverage()};
+ACT['cov-filter']=async el=>{const c=state.cov;c.filter=el.dataset.v;c.offset=0;covClearSelection();await showCoverage()};
+ACT['cov-find']=async()=>{const c=state.cov;c.search=$('#covSearch').value.trim();c.offset=0;covClearSelection();await showCoverage()};
+ACT['cov-clear']=async()=>{const c=state.cov;c.search='';c.filter='ALL';c.offset=0;covClearSelection();await showCoverage()};
+ACT['cov-prev']=async()=>{const c=state.cov;c.offset=Math.max(0,c.offset-50);covClearSelection();await showCoverage()};
+ACT['cov-next']=async()=>{const c=state.cov;if(!c.data||c.offset+50>=c.data.total_filtered)return;c.offset+=50;covClearSelection();await showCoverage()};
+CHG['cov-pick']=el=>{const c=state.cov;c.sel=c.sel||new Set();el.checked?c.sel.add(el.value):c.sel.delete(el.value);const x=$('#covSelCount');if(x)x.textContent=`${n(c.sel.size)} item dipilih`};
+async function covOverride(items,action){
+ if(!isAdmin())throw Error('Hanya Master/Admin.');
+ if(!items.length)return toast('Pilih item lebih dahulu.',true);
+ const c=state.cov;
+ if(items.length>50)throw Error('Maksimal 50 item sekali tindakan.');
+ const label=items.length===1?items[0]:`${items.length} item`;
+ let reason='';
+ if(action==='UNLOCK'){
+  reason=prompt(`Alasan membuka kunci ${label} untuk satu SO tambahan (minimal 5 karakter):`)||'';
+  if(!reason)return;
+  if(reason.trim().length<5)throw Error('Alasan minimal 5 karakter.');
+ }else if(!confirm(`Cabut izin membuka kunci untuk ${label}?`))return;
+ const out=await rpc('item_lock_override',{p_store:c.store,p_items:items,p_action:action,p_reason:reason});
+ covClearSelection();toast(action==='UNLOCK'?`${n(out.changed)} item dibuka untuk SO berikutnya.`:`${n(out.changed)} izin dicabut.`);
+ await showCoverage();
+}
+ACT['cov-unlock']=el=>covOverride([el.dataset.sku],'UNLOCK');
+ACT['cov-lock']=el=>covOverride([el.dataset.sku],'LOCK');
+ACT['cov-unlock-selected']=()=>covOverride([...state.cov.sel||[]],'UNLOCK');
+ACT['cov-lock-selected']=()=>covOverride([...state.cov.sel||[]],'LOCK');
 
 /* ---------- Pembersihan Database (Admin) ---------- */
 const clnParams=()=>({p_audit_days:Math.max(1,Number($('#clnAudit')?.value)||365),p_upload_days:Math.max(1,Number($('#clnUpload')?.value)||30)});
@@ -1661,14 +1686,15 @@ ACT['cln-browser']=async()=>{
  toast(`Draft browser dibersihkan: ${n(removed)} item`);
 };
 
-/* ---------- Sinkronisasi rasio (Admin): membuka item yang terkunci karena rasio SO yang sudah dihapus ---------- */
-const covSyncText=d=>d.changed
- ?`Akan berubah: ${n(d.changed)} item. Contoh: ${(d.sample||[]).slice(0,8).map(x=>`${x.sku} ${x.dari}x→${x.menjadi}x`).join(', ')}.${d.archived_recorded?` Catatan: ${n(d.archived_recorded)} SO arsip tidak bisa dihitung ulang.`:''}`
- :'Tidak ada perubahan. Rasio sudah sesuai dengan SO yang masih ada.';
+/* ---------- Audit rasio historis (Admin): resync hanya jika detail SO lengkap ---------- */
+const covSyncText=d=>`${n(d.changed)} perbedaan dengan detail SO yang masih tersedia. ${d.unverifiable_cycles
+ ?`Ada ${n(d.unverifiable_cycles)} SO historis tanpa detail lengkap; sinkronisasi DIBLOKIR agar rasio lama tidak terhapus. Gunakan Buka Kunci Master bila perlu SO tambahan.`
+ :`Detail SO masih lengkap. ${d.changed?'Periksa perbedaan sebelum menerapkan.':'Tidak ada perubahan.'}`}
+ ${(d.sample||[]).slice(0,8).map(x=>`${x.sku}: ${x.dari}x→${x.menjadi}x`).join(', ')}`;
 ACT['cov-sync-check']=async()=>{const d=await rpc('rounds_resync',{p_store:state.cov.store,p_apply:false});$('#covSync').textContent=covSyncText(d)};
 ACT['cov-sync-apply']=async()=>{
  const c=state.cov;const d=await rpc('rounds_resync',{p_store:c.store,p_apply:false});
- if(!d.changed){$('#covSync').textContent=covSyncText(d);return}
+ if(!d.changed||!d.can_apply){$('#covSync').textContent=covSyncText(d);return}
  if(!confirm('Terapkan sinkronisasi rasio?\n'+covSyncText(d)))return;
  await rpc('rounds_resync',{p_store:c.store,p_apply:true});toast('Rasio disinkronkan');await showCoverage();
 };
@@ -1679,7 +1705,7 @@ ACT['so-hard-del']=async el=>{
  if(!confirm('HAPUS PERMANEN SO ini dari database dan aplikasi?\n\nDetail item dihapus, rasio item dikembalikan, dan SO tidak lagi dihitung di dashboard. Tidak perlu export. Lanjutkan?'))return;
  const out=await rpc('hard_delete',{p_cycles:[id]});
  toast(out.archived_rounds_not_reverted
-  ?'SO dihapus. SO ini sudah dibersihkan, jadi rasio itemnya perlu disinkronkan lewat Cakupan Item.'
+  ?'SO dihapus. Detail historis sudah dibersihkan; periksa Audit Rasio dan gunakan Buka Kunci Master jika perlu.'
   :'SO dihapus permanen');
  state.validation.open=false;state.validation.data=null;
  await refreshDashboard();await render();

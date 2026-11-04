@@ -1367,3 +1367,11 @@ body{-webkit-font-smoothing:antialiased}
 
 /* v35 - label item manual hanya satu kali (tanpa kode SKU terpisah) */
 .sku-row .sku-name-pick{min-width:0;flex:1;overflow-wrap:break-word;font-weight:700}
+
+/* v37: cakupan responsif; kolom aksi Master tetap berada dalam tabel tanpa overflow halaman. */
+.cov-bulk{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
+.cov-table{width:100%;min-width:690px;table-layout:auto}
+.cov-table th,.cov-table td{padding:7px 9px;vertical-align:middle}
+.cov-table .nm{min-width:200px;width:39%}
+.cov-table .btn{white-space:nowrap;font-size:11px;padding:5px 8px}
+@media(max-width:900px){.cov-table{min-width:760px}}
