@@ -11,7 +11,7 @@ const state={me:null,stores:[],dashboard:[],page:'dashboard',store:'',online:tru
  exp:{store:'',range:null,rows:[],sel:new Set()},
  count:{offset:0,search:'',filter:'ALL',team:'',data:null,open:false,sel:new Set(),listQ:'',rows:[]},
  validation:{offset:0,search:'',filter:'VARIANCE',status:'ALL',data:null,open:false,cycle:'',listQ:'',rows:[]},
- builder:null,cov:{store:'',filter:'ALL',search:'',offset:0,data:null}};
+ builder:null,cov:{store:'',filter:'ALL',search:'',offset:0,data:null,selectMode:'MANUAL',sel:new Set()}};
 let upRows=[];
 let upCheck=null;
 let upConflicts=[];
@@ -29,7 +29,7 @@ const $=sel=>document.querySelector(sel);
 const $$=sel=>Array.from(document.querySelectorAll(sel));
 const toast=(s,isErr=false)=>{const el=$('#toast');el.textContent=s;el.className='toast'+(isErr?' error':'');clearTimeout(el._t);el._t=setTimeout(()=>el.classList.add('hidden'),5500)};
 const busy=d=>{inflight=Math.max(0,inflight+d);const p=$('#progress');if(p)p.classList.toggle('on',inflight>0)};
-const SYNC_RPCS=new Set(['upload','start','start_cycle','submit','approve','recount','validate_edit','validate_line','schedule_create','schedule_update','schedule_delete','archive_cycles','hard_delete','unlock','ba_sign','ba_sign_bulk','ba_reason_set','ba_adjust','ba_adjust_bulk','ba_clean','assign_user','set_store_spv','set_store_area','rounds_resync','item_lock_override','activate_user']);
+const SYNC_RPCS=new Set(['upload','start','start_cycle','submit','approve','recount','validate_edit','validate_line','schedule_create','schedule_update','schedule_delete','archive_cycles','hard_delete','unlock','ba_sign','ba_sign_bulk','ba_reason_set','ba_adjust','ba_adjust_bulk','ba_clean','assign_user','set_store_spv','set_store_area','rounds_resync','item_lock_override','item_lock_override_filter','activate_user']);
 const rpc=async(name,args={})=>{busy(1);try{const {data,error}=await sb.rpc('tsi_so_'+name,args);if(error){if(!error.code)state.online=false;throw new Error(error.message||'Terjadi kesalahan server')}state.online=true;if(SYNC_RPCS.has(name))notifySync(name,args.p_store||null);return data}finally{busy(-1)}};
 const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 const isoUTC=d=>d.toISOString().slice(0,10);
@@ -625,8 +625,9 @@ function ruleOf(scope,stats){
  const categories=[...scope.cats.keys()];const colors={};
  for(const [cat,set] of scope.cats){
   if(!set)continue;
-  const all=(stats.get(cat)||[]).map(x=>x.color);
-  if(all.length&&set.size<all.length)colors[cat]=[...set];
+  const list=stats.get(cat)||[];
+  const all=list.filter(x=>Number(x.eligible_count??0)>0).map(x=>x.color);
+  if(all.length&&(set.size<all.length||all.length<list.length))colors[cat]=[...set];
  }
  return{categories,colors,skus:[...scope.skus]};
 }
@@ -636,7 +637,7 @@ function teamsPayload(b){return b.teams.map(t=>({name:(t.name||'').trim()||'Tim'
 function openBuilder(type,cycle){
  const sc=state.sch;const edit=!!cycle;
  const b={mode:edit?'edit':'create',cycleId:cycle?.id||null,type:edit?cycle.so_type:(type||'GRAND'),store:edit?cycle.store_code:(sc.store||state.stores[0]?.code||''),
-  scopeMode:'ALL',scope:newScope(),teams:[],stats:new Map(),catList:null,skuQ:'',timer:null};
+  scopeMode:'ALL',scope:newScope(),teams:[],stats:new Map(),statsErrors:new Map(),catList:null,skuQ:'',timer:null,previewSeq:0};
  if(edit){
   b.scope=scopeFromRule(cycle.scope_rule);
   b.teams=(cycle.team_map||[]).map(t=>({name:t.name,scope:scopeFromRule(t.rule)}));
@@ -674,31 +675,59 @@ ACT['b-close']=()=>closeBuilder();
 ACT['b-type']=async el=>{const b=state.builder;if(!b)return;b.type=el.dataset.v;if(b.type==='PARTIAL'&&b.scopeMode==='ALL')b.scopeMode='SCOPE';
  $$('#bCol [data-act="b-type"]').forEach(x=>x.classList.toggle('on',x.dataset.v===b.type));await renderScope()};
 ACT['b-mode']=async el=>{const b=state.builder;if(!b)return;b.scopeMode=el.dataset.v;if(b.scopeMode==='TEAMS'&&!b.teams.length)b.teams.push({name:'POS 1',scope:newScope()});await renderScope()};
-CHG['b-store']=async el=>{const b=state.builder;if(!b)return;b.store=el.value;b.scope=newScope();b.teams=[];b.stats=new Map();b.catList=null;await renderScope()};
+CHG['b-store']=async el=>{const b=state.builder;if(!b)return;b.store=el.value;b.scope=newScope();b.teams=[];b.stats=new Map();b.statsErrors=new Map();b.catList=null;await renderScope()};
 CHG['b-field']=()=>schedulePreview();
 
 async function ensureStats(b,cats){
- const need=cats.filter(c=>!b.stats.has(c));
- await Promise.all(need.map(async c=>{try{const list=(await rpc('color_stats',{p_store:b.store,p_category:c})).slice().sort((x,y)=>y.sku_count-x.sku_count||x.color.localeCompare(y.color));b.stats.set(c,list)}catch(ex){b.stats.set(c,[]);toast(ex.message,true)}}));
+ const need=cats.filter(c=>!b.stats.has(c)||b.statsErrors?.has(c));
+ const store=b.store,stats=b.stats;
+ // Batasi kueri berat supaya 20-40 category tidak dibaca sekaligus oleh database.
+ let cursor=0;
+ const worker=async()=>{
+  while(cursor<need.length){
+   const c=need[cursor++];
+   if(b.store!==store||b.stats!==stats)return;
+   try{
+    const response=await rpc('color_stats',{p_store:store,p_category:c});
+    if(response.length&&response[0].version!==40)throw Error('Perbarui SQL 037 agar status warna dan item akurat.');
+    const list=response.slice().sort((x,y)=>y.sku_count-x.sku_count||x.color.localeCompare(y.color));
+    if(b.store===store&&b.stats===stats){stats.set(c,list);b.statsErrors?.delete(c)}
+   }catch(ex){
+    if(b.store===store&&b.stats===stats){stats.set(c,[]);(b.statsErrors??=new Map()).set(c,ex.message);toast(ex.message,true)}
+   }
+  }
+ };
+ await Promise.all(Array.from({length:Math.min(3,need.length)},worker));
 }
 // Set kosong dari null (belum dimuat) -> semua warna, dipanggil setelah stats tersedia
+function eligibleColors(b,cat){
+ return (b.stats.get(cat)||[]).filter(x=>Number(x.eligible_count??0)>0).map(x=>x.color);
+}
 function materialize(b,scope,cat){
  const set=scope.cats.get(cat);
- if(set===null||set===undefined){const all=(b.stats.get(cat)||[]).map(x=>x.color);scope.cats.set(cat,new Set(all));return scope.cats.get(cat)}
+ if(set===null||set===undefined){scope.cats.set(cat,new Set(eligibleColors(b,cat)));return scope.cats.get(cat)}
  return set;
 }
 function ownerKey(owner,cat){return owner+'|'+cat}
 function colorPanelHTML(owner,cat,set,list){
  if(!list)return '<div class="color-panel small muted">Memuat warna…</div>';
+ const b=state.builder;
+ if(b?.statsErrors?.has(cat))return `<div class="note warning">Data warna gagal dimuat: ${escapeHTML(b.statsErrors.get(cat))}. <button class="link-btn" data-act="b-color-retry" data-owner="${escapeHTML(owner)}" data-cat="${escapeHTML(cat)}">Coba lagi</button></div>`;
  if(!list.length)return '<div class="color-panel small muted">Tidak ada item pada category ini.</div>';
  const count=set?set.size:0;
- const head=`<div class="cp-head"><span class="small"><b>Warna ${escapeHTML(cat)}</b> — ${n(count)} dari ${n(list.length)} dipilih</span>
-  <span class="cp-actions"><button class="link-btn" data-act="b-color-all" data-owner="${escapeHTML(owner)}" data-cat="${escapeHTML(cat)}">Pilih semua</button><button class="link-btn muted-link" data-act="b-color-clear" data-owner="${escapeHTML(owner)}" data-cat="${escapeHTML(cat)}">Kosongkan</button></span></div>`;
+ const available=list.filter(x=>Number(x.eligible_count??0)>0);
+ const head=`<div class="cp-head"><span class="small"><b>Warna ${escapeHTML(cat)}</b> — ${n(count)} dipilih · ${n(available.length)} bisa dijadwalkan</span>
+  <span class="cp-actions"><button class="link-btn" data-act="b-color-all" data-owner="${escapeHTML(owner)}" data-cat="${escapeHTML(cat)}">Pilih yang bisa</button><button class="link-btn muted-link" data-act="b-color-clear" data-owner="${escapeHTML(owner)}" data-cat="${escapeHTML(cat)}">Kosongkan</button></span></div>`;
  return `<div class="color-panel">${head}<div class="crow-grid">${list.map(x=>{
-   const checked=!!set&&set.has(x.color);const hex=colorHex(x.color);const dk=isDarkHex(hex);
-   const elig=x.eligible_count??x.sku_count;const locked=x.sku_count-elig;
+   const elig=Number(x.eligible_count??0),total=Number(x.sku_count??0);
+   const locked=Math.max(0,total-elig),canSelect=elig>0;
+   const checked=!!set&&set.has(x.color);
+   const hex=colorHex(x.color),dk=isDarkHex(hex);
    const style=dk?`background:${hex};border-color:${hex}`:`background:linear-gradient(90deg,${hex}40,${hex}14);border-color:${hex}88`;
-   return `<label class="crow ${checked?'on':''} ${dk?'dk':''}" style="${style}"><span class="crow-top"><input type="checkbox" data-change="b-color" data-owner="${escapeHTML(owner)}" data-cat="${escapeHTML(cat)}" value="${escapeHTML(x.color)}" ${checked?'checked':''}/><span class="cname">${escapeHTML(x.color)}</span></span><span class="crow-bot"><small>${n(elig)} bisa di-SO${locked>0?` · ${n(locked)} terkunci`:''}</small><em title="Berdasarkan rasio item, bukan jumlah jadwal GRAND lama">${n(x.belum_count??0)} belum SO · ${n(x.sudah_count??0)} sudah SO</em></span></label>`}).join('')}</div></div>`;
+   const historyReview=Number(x.history_review_count??0),ratioGap=Number(x.ratio_gap_count??0);
+   const note=(historyReview?`<span class="crow-review" title="Riwayat terarsip/belum dapat diverifikasi: audit sebelum mengubah rasio">Perlu verifikasi: ${n(historyReview)}</span>`:'')+(ratioGap?`<span class="crow-review crow-reconciled" title="Rasio tampil dikoreksi secara logis dari detail SO yang lengkap; data historis tidak diubah">Rekonsiliasi: ${n(ratioGap)}</span>`:'');
+   return `<label class="crow ${checked?'on':''} ${dk?'dk':''} ${canSelect?'':'crow-locked'}" style="${style}"><span class="crow-top"><input type="checkbox" data-change="b-color" data-owner="${escapeHTML(owner)}" data-cat="${escapeHTML(cat)}" value="${escapeHTML(x.color)}" ${checked?'checked':''} ${canSelect?'':'disabled'} /><span class="cname">${escapeHTML(x.color)}</span></span><span class="crow-bot"><small>${n(elig)} bisa di-SO${locked>0?` · ${n(locked)} terkunci`:''}</small><em>${n(x.belum_count??0)} rasio 0x · ${n(x.sudah_count??0)} rasio &gt;0x</em>${note}</span></label>`
+ }).join('')}</div></div>`;
 }
 function catBlockHTML(b,owner,cat,scope){
  const on=scope.cats.has(cat);const set=scope.cats.get(cat);const list=b.stats.get(cat);
@@ -758,7 +787,7 @@ async function renderScope(){
  const modeSeg=`<div class="field"><span>Cara SO *</span><div class="seg">${modes.map(([v,l])=>`<button class="${b.scopeMode===v?'on':''}" data-act="b-mode" data-v="${v}">${l}</button>`).join('')}</div></div>`;
  let body='';
  if(b.scopeMode==='ALL'){
-  body=`<div class="scope-box"><b>Scope: seluruh item inventory toko</b><p class="small muted">Stok sistem diambil saat SO dimulai (Proses) dan ikut diperbarui jika inventory di-upload ulang, sampai SO di-SUBMIT store. Setelah SUBMIT, system dikunci. Pilih Category & Warna atau Bagi per Tim / POS bila SO hanya sebagian.</p></div>`;
+  body=`<div class="scope-box"><b>Scope: seluruh item yang eligible di toko</b><p class="small muted">Stok sistem diambil saat SO dimulai (Proses) dan ikut diperbarui jika inventory di-upload ulang, sampai SO di-SUBMIT store. Setelah SUBMIT, system dikunci. Pilih Category & Warna atau Bagi per Tim / POS bila SO hanya sebagian.</p></div>`;
  }else if(b.scopeMode==='SCOPE'){
   body=`<div class="scope-box">
     <div class="scope-head"><b>Category & Warna</b>
@@ -787,7 +816,7 @@ async function renderScope(){
 }
 CHG['b-cat']=async el=>{
  const b=state.builder;const owner=el.dataset.owner,cat=el.value;const scope=b&&ownerScope(b,owner);if(!scope)return;
- if(el.checked){await ensureStats(b,[cat]);scope.cats.set(cat,new Set((b.stats.get(cat)||[]).map(x=>x.color)))}
+ if(el.checked){await ensureStats(b,[cat]);scope.cats.set(cat,new Set(eligibleColors(b,cat)))}
  else scope.cats.delete(cat);
  redrawBlock(owner,cat);
 };
@@ -795,16 +824,17 @@ ACT['b-cat-all']=async()=>{
  const b=state.builder;if(!b||!b.catList)return;
  const snap=scrollSnap($('#bScope'));
  await ensureStats(b,b.catList.map(c=>c.category));
- b.scope.cats=new Map(b.catList.map(c=>[c.category,new Set((b.stats.get(c.category)||[]).map(x=>x.color))]));
+ b.scope.cats=new Map(b.catList.map(c=>[c.category,new Set(eligibleColors(b,c.category))]));
  await renderScope();scrollRestore(snap);
 };
 ACT['b-cat-clear']=async()=>{const b=state.builder;if(!b)return;b.scope.cats=new Map();await renderScope()};
-ACT['b-color-all']=async el=>{const b=state.builder;const owner=el.dataset.owner,cat=el.dataset.cat;const s=b&&ownerScope(b,owner);if(!s)return;s.cats.set(cat,new Set((b.stats.get(cat)||[]).map(x=>x.color)));redrawBlock(owner,cat)};
+ACT['b-color-retry']=async el=>{const b=state.builder;const cat=el.dataset.cat;if(!b)return;b.stats.delete(cat);b.statsErrors?.delete(cat);await ensureStats(b,[cat]);if(state.builder===b)redrawBlock(el.dataset.owner,cat)};
+ACT['b-color-all']=async el=>{const b=state.builder;const owner=el.dataset.owner,cat=el.dataset.cat;const s=b&&ownerScope(b,owner);if(!s)return;s.cats.set(cat,new Set(eligibleColors(b,cat)));redrawBlock(owner,cat)};
 ACT['b-color-clear']=async el=>{const b=state.builder;const owner=el.dataset.owner,cat=el.dataset.cat;const s=b&&ownerScope(b,owner);if(!s)return;s.cats.set(cat,new Set());redrawBlock(owner,cat)};
 CHG['b-color']=async el=>{
  const b=state.builder;const owner=el.dataset.owner,cat=el.dataset.cat;const s=b&&ownerScope(b,owner);if(!s)return;
  const set=materialize(b,s,cat);
- if(el.checked)set.add(el.value);else set.delete(el.value);
+ if(el.checked){if(!eligibleColors(b,cat).includes(el.value)){el.checked=false;toast('Warna belum bisa di-SO. Gunakan Buka Kunci Master jika memang perlu.',true);return}set.add(el.value)}else set.delete(el.value);
  redrawBlock(owner,cat);
 };
 CHG['b-sku']=el=>{const b=state.builder;if(!b)return;el.checked?b.scope.skus.add(el.value):b.scope.skus.delete(el.value);drawSkuChips();updateCatSummary();schedulePreview()};
@@ -812,6 +842,7 @@ ACT['b-sku-del']=async el=>{const b=state.builder;if(!b)return;b.scope.skus.dele
 CHG['b-search']=async el=>{
  const b=state.builder;if(!b)return;b.skuQ=el.value.trim();
  const d=await rpc('sku_coverage',{p_store:b.store,p_filter:'ALL',p_search:b.skuQ,p_offset:0,p_limit:50});
+ if(d.version!==40)throw Error('Jalankan SQL 037 terlebih dahulu sebelum menggunakan pemilihan item.');
  const box=$('#bSkuList');if(!box||state.builder!==b)return;
  box.innerHTML=(d.items||[]).map(x=>{const sel=b.scope.skus.has(x.sku);const dis=!x.eligible&&!sel;
    return `<label class="sku-row ${dis?'locked':''}"><input type="checkbox" data-change="b-sku" value="${escapeHTML(x.sku)}" ${sel?'checked':''} ${dis?'disabled':''}/><span class="sku-name-pick">${escapeHTML(x.name)}</span><span class="ratio ${x.ratio?'r1':'r0'}">${n(x.ratio)}x</span><em>${dis?'Terkunci':'Bisa'}</em></label>`}).join('')||'<div class="empty small">Tidak ada item yang cocok.</div>';
@@ -824,6 +855,7 @@ ACT['b-mode-set']=async()=>{};
 function schedulePreview(){const b=state.builder;if(!b)return;clearTimeout(b.timer);b.timer=setTimeout(updatePreview,250)}
 async function updatePreview(){
  const b=state.builder;if(!b||!$('#bPreview'))return;
+ const seq=++b.previewSeq;
  const store=$('#bStore')?.value||b.store;
  const date=$('#bDate')?.value||'',start=$('#bStart')?.value||'',end=$('#bEnd')?.value||'';
  let info={count:0,sample:[]},teamRes=null,err='';
@@ -837,14 +869,15 @@ async function updatePreview(){
    info=await rpc('scope_preview',{p_store:store,p_type:'GRAND',p_rule:{}});
   }
  }catch(ex){err=ex.message}
- if(state.builder!==b||!$('#bPreview'))return;
+ if(state.builder!==b||seq!==b.previewSeq||!$('#bPreview'))return;
  if(teamRes){teamRes.teams.forEach((t,i)=>{const el=$('#tc'+i);if(el)el.textContent=`${n(t.count)} item`})}
- const desc=b.scopeMode==='ALL'?'Seluruh inventory toko':b.scopeMode==='SCOPE'?`${n(b.scope.cats.size)} category • ${n(b.scope.skus.size)} Item manual`:`${n(b.teams.length)} tim/POS`;
+ const desc=b.scopeMode==='ALL'?'Seluruh item yang eligible':b.scopeMode==='SCOPE'?`${n(b.scope.cats.size)} category • ${n(b.scope.skus.size)} Item manual`:`${n(b.teams.length)} tim/POS`;
  $('#bPreview').innerHTML=`<div class="prev">
    <div class="prev-stats"><div><small>Toko</small><b>${escapeHTML(labelStore(store))}</b></div><div><small>Jenis</small><b>${b.type==='GRAND'?'Grand SO':'Partial SO'}</b></div><div><small>Tanggal</small><b>${fmtDate(date)}</b></div><div><small>Jam</small><b>${start||'—'}${end?' – '+end:''}</b></div></div>
    <div class="prev-big"><small>item yang di-SO</small><b>${n(info.count)}</b><span>${desc}</span></div>
    ${b.scopeMode==='TEAMS'&&teamRes?`<div class="team-summary">${teamRes.teams.map(t=>`<div><span>${escapeHTML(t.name)}</span><b>${n(t.count)} item</b></div>`).join('')}</div>`:''}
    ${err?`<div class="note warning">${escapeHTML(err)}</div>`:''}
+   ${!err&&info.count===0&&b.scopeMode!=='ALL'?'<div class="note warning">Tidak ada item eligible dari pilihan ini. Warna dengan 0 item bisa di-SO harus dibuka Master atau diganti dengan warna lain.</div>':''}
    ${info.sample?.length?`<div class="sku-cloud">${info.sample.map(s=>`<span class="sku-chip mono">${escapeHTML(s)}</span>`).join('')}${info.count>info.sample.length?`<span class="small muted">+${n(info.count-info.sample.length)} lainnya</span>`:''}</div>`:''}
    <div class="note info small">Stok sistem diambil saat SO dimulai (Proses). Jika inventory di-upload ulang, system ikut diperbarui sampai SO di-SUBMIT. Setelah SUBMIT, system dikunci dan hanya bisa diubah SPV/Admin di menu Validasi.</div>
  </div>`;
@@ -858,7 +891,10 @@ ACT['b-save']=async()=>{
  for(const [owner,sc] of owners){
   for(const [cat,set] of sc.cats){
    const list=b.stats.get(cat)||[];
-   if(list.length&&(!set||set.size===0))throw Error(`Category ${cat} belum punya warna dipilih. Pilih minimal satu warna atau hapus centang category.`);
+   if(b.statsErrors?.has(cat))throw Error(`Data category ${cat} gagal dimuat. Tutup dan buka ulang category.`);
+   if(list.length&&(!set||set.size===0))throw Error(`Category ${cat} belum punya warna yang bisa di-SO. Pilih warna eligible atau hapus category.`);
+   const ok=new Set(eligibleColors(b,cat));
+   if(set&&[...set].some(color=>!ok.has(color)))throw Error(`Category ${cat} masih memuat warna terkunci. Perbarui pilihan sebelum menyimpan.`);
   }
  }
  if(b.scopeMode==='SCOPE'){
@@ -1604,53 +1640,88 @@ async function loadAudit(){
 /* ---------- Mulai ---------- */
 (async()=>{const {data:{session}}=await sb.auth.getSession();if(session)await start();else loginView()})();
 
-/* ---------- Cakupan Item: rasio historis dan izin sekali pakai oleh Master ---------- */
+/* ---------- Cakupan Item v40: status berdasarkan bukti SO, pilih manual/halaman/hasil filter ---------- */
+const covClearSelection=()=>{state.cov.sel=new Set();state.cov.selectMode='MANUAL'};
+const covSelectedCount=()=>{const c=state.cov;return c.selectMode==='FILTER'?Number(c.data?.total_filtered||0):c.sel.size};
 async function showCoverage(){
  const c=state.cov;
  if(state.me.role==='store')c.store=state.me.store_code;
  else if(!c.store)c.store=state.store||state.stores[0]?.code||'';
- c.sel=c.sel||new Set();
- const d=await rpc('sku_coverage',{p_store:c.store,p_filter:c.filter,p_search:c.search,p_offset:c.offset,p_limit:50});c.data=d;
+ c.sel=c.sel||new Set();c.selectMode=c.selectMode||'MANUAL';
+ const d=await rpc('sku_coverage',{p_store:c.store,p_filter:c.filter,p_search:c.search,p_offset:c.offset,p_limit:50});
+ if(d.version!==40)throw Error('SQL 037 belum aktif. Terapkan migrasi v40 sebelum membuka Cakupan Item.');
+ c.data=d;
+ if(c.selectMode==='PAGE')c.sel=new Set((d.items||[]).map(x=>x.sku));
  const s2=d.summary||{};const pct=s2.total?Math.round(100*s2.sudah/s2.total):0;
  const mini=(cls,l,val,sub)=>`<div class="mini ${cls}"><small>${l}</small><b>${val}</b><span>${sub}</span></div>`;
- const filters=[['ALL','Semua'],['BELUM','Belum di-SO'],['SUDAH','Sudah di-SO'],['DIPILIH','Bisa dipilih'],['TERKUNCI','Terkunci'],['DIBUKA','Dibuka Master']];
- $('#content').innerHTML=`${isAdmin()?`<div class="card"><div class="card-head"><h3>Audit Rasio SO</h3><span class="muted small">Periksa sebelum sinkronisasi; histori arsip tidak boleh dihapus</span></div><div class="row">${btn('Cek Rasio','cov-sync-check','outline')}${btn('Sinkronkan (hanya jika aman)','cov-sync-apply','outline')}</div><div id="covSync" class="note info small">Klik Cek Rasio. Jika detail historis sudah dibersihkan, gunakan Buka Kunci Master, bukan reset rasio.</div></div>`:''}
+ const filters=[['ALL','Semua'],['BELUM','Belum di-SO'],['SUDAH','Sudah di-SO'],['DIPILIH','Bisa dipilih'],['TERKUNCI','Terkunci'],['REVIEW','Perlu verifikasi'],['KOREKSI','Rekonsiliasi'],['DIBUKA','Dibuka Master']];
+ const mode=c.selectMode;
+ $('#content').innerHTML=`${isAdmin()?`<div class="card"><div class="card-head"><h3>Audit Rasio SO</h3><span class="muted small">Periksa sebelum sinkronisasi; histori arsip tidak boleh dihapus</span></div><div class="row">${btn('Cek Rasio','cov-sync-check','outline')}${btn('Sinkronkan (hanya jika aman)','cov-sync-apply','outline')}</div><div id="covSync" class="note info small">Untuk item dengan detail SO historis yang tidak lengkap, gunakan Buka Kunci Master. Rasio aslinya tetap disimpan.</div></div>`:''}
  <div class="card filter-card"><div class="filters">
    ${state.me.role!=='store'?`<select class="input select" data-change="cov-store">${storeOptions(c.store,false)}</select>`:`<span class="chip blue">${escapeHTML(labelStore(c.store))}</span>`}
    <input id="covSearch" class="input grow" placeholder="Cari nama item" value="${escapeHTML(c.search)}"/>
    ${btn('Cari','cov-find','outline')}${rstHTML('cov')}
   </div>
-  <div class="note info">Item dengan rasio 0x selalu bisa dipilih. Item dengan rasio lebih tinggi dapat terkunci oleh aturan putaran; Master bisa membukanya untuk satu SO tambahan. Rasio historis dan BA tidak berubah.</div></div>
+  <div class="note info">Kelayakan memakai bukti detail SO ketika lengkap. Jika histori terarsip atau sudah dibersihkan, sistem menandai <b>Perlu verifikasi</b> dan tidak mereset rasio otomatis. Semua toko dan pemilihan jadwal memakai sumber kelayakan yang sama.</div></div>
  <div class="mini-row">
    ${mini('','Total Item',n(s2.total),'Seluruh item toko')}
    ${mini('g','Tercatat pernah SO',n(s2.sudah),pct+'% dari total')}
-   ${mini('a','Belum tercatat SO',n(s2.belum),'Rasio 0x · selalu bisa dipilih')}
+   ${mini('a','Belum tercatat SO',n(s2.belum),'Belum SO · bisa dipilih')}
    ${mini('o','Bisa dipilih',n(s2.dipilih),'Termasuk izin Master')}
-   ${mini('r','Terkunci',n(s2.terkunci),'Belum mendapat izin baru')}
+   ${mini('r','Terkunci',n(s2.terkunci),'Ikuti rasio/riwayat')}
+   ${mini('o','Perlu Verifikasi',n(s2.review),'Data historis tidak lengkap')}
+   ${mini('a','Rekonsiliasi Logis',n(s2.koreksi),'Detail tersedia; rasio asli tetap')}
    ${mini('g','Dibuka Master',n(s2.dibuka),'Izin sekali pakai aktif')}
  </div>
  <div class="card">
-  <div class="seg">${filters.map(([v,l])=>`<button class="${c.filter===v?'on':''}" data-act="cov-filter" data-v="${v}">${l}</button>`).join('')}</div>
-  ${isAdmin()?`<div class="row cov-bulk"><b id="covSelCount">${n(c.sel.size)} item dipilih</b>${btn('Buka Kunci Pilihan','cov-unlock-selected','primary')}${btn('Cabut Izin Pilihan','cov-lock-selected','outline')}<span class="small muted">Maksimal 50 item sekali tindakan. Pilih hanya item pada toko ini.</span></div>`:''}
-  <div class="tablewrap" style="margin-top:10px"><table class="cov-table"><thead><tr>${isAdmin()?'<th>Pilih</th>':''}<th>Item & Warna</th><th class="num">Rasio</th><th>Status Riwayat</th><th>Status Pemilihan</th>${isAdmin()?'<th>Aksi Master</th>':''}</tr></thead><tbody>
-  ${(d.items||[]).map(x=>`<tr>${isAdmin()?`<td><input type="checkbox" data-change="cov-pick" value="${escapeHTML(x.sku)}" ${c.sel.has(x.sku)?'checked':''} aria-label="Pilih ${escapeHTML(x.name)}"/></td>`:''}<td class="nm">${nameBadge(x.name,x.category)}</td><td class="num"><span class="ratio ${x.ratio?'r1':'r0'}">${n(x.ratio)}x</span></td><td>${x.status==='SUDAH'?chip('TALLY','TERCATAT SUDAH'):chip('BELUM','BELUM SO')}</td><td>${x.unlocked?'<span class="chip green"><i></i>Dibuka Master</span>':x.eligible?'<span class="chip blue"><i></i>Bisa dipilih</span>':'<span class="chip red"><i></i>Terkunci</span>'}</td>${isAdmin()?`<td>${x.unlocked?btn('Cabut','cov-lock','outline',{sku:x.sku}):x.ratio>0?btn('Buka Kunci','cov-unlock','outline',{sku:x.sku}):'<span class="muted small">Tidak perlu</span>'}</td>`:''}</tr>`).join('')||`<tr><td colspan="${isAdmin()?6:4}" class="empty">Tidak ada item pada filter ini.</td></tr>`}
+  <div class="seg cov-filterbar">${filters.map(([v,l])=>`<button class="${c.filter===v?'on':''}" data-act="cov-filter" data-v="${v}">${l}</button>`).join('')}</div>
+  ${isAdmin()?`<div class="row cov-bulk cov-select-row">
+   <label class="small" for="covSelectMode"><b>Mode Pilihan</b></label>
+   <select id="covSelectMode" class="input select" data-change="cov-mode">
+    <option value="MANUAL" ${mode==='MANUAL'?'selected':''}>Pilih beberapa item</option>
+    <option value="PAGE" ${mode==='PAGE'?'selected':''}>Pilih semua pada halaman (maks. 50)</option>
+    <option value="FILTER" ${mode==='FILTER'?'selected':''}>Pilih semua hasil filter (${n(d.total_filtered)})</option>
+   </select>
+   ${btn('Kosongkan pilihan','cov-selection-clear','outline')}
+   <b id="covSelCount">${n(covSelectedCount())} item ${mode==='FILTER'?'sesuai filter':'dipilih'}</b>
+   ${btn('Buka Kunci Pilihan','cov-unlock-selected','primary')}
+   ${btn('Cabut Izin Pilihan','cov-lock-selected','outline')}
+   <span class="small muted">Pilihan hasil filter diproses di database hanya untuk toko dan filter yang sedang aktif. Konfirmasi wajib sebelum tindakan.</span>
+  </div>`:''}
+  <div class="tablewrap" style="margin-top:10px"><table class="cov-table"><thead><tr>${isAdmin()?`<th><input type="checkbox" data-change="cov-pick-page" ${mode==='FILTER'?'disabled checked':((d.items||[]).length>0&&(d.items||[]).every(x=>c.sel.has(x.sku)))?'checked':''} aria-label="Pilih semua item pada halaman"/></th>`:''}<th>Item &amp; Warna</th><th class="num">Rasio</th><th>Status Riwayat</th><th>Status Pemilihan</th>${isAdmin()?'<th>Aksi Master</th>':''}</tr></thead><tbody>
+  ${(d.items||[]).map(x=>`<tr>${isAdmin()?`<td><input type="checkbox" data-change="cov-pick" value="${escapeHTML(x.sku)}" ${(mode==='FILTER'||c.sel.has(x.sku))?'checked':''} ${mode==='FILTER'?'disabled':''} aria-label="Pilih ${escapeHTML(x.name)}"/></td>`:''}<td class="nm">${nameBadge(x.name,x.category)}</td><td class="num"><span class="ratio ${x.ratio?'r1':'r0'}">${n(x.ratio)}x</span>${x.history_status==='KOREKSI_LOGIS'?`<small class="cov-diff">Data: ${n(x.stored_ratio)}x</small>`:''}</td><td>${x.history_status==='PERLU_VERIFIKASI'?'<span class="chip orange"><i></i>Perlu verifikasi</span>':x.history_status==='KOREKSI_LOGIS'?'<span class="chip blue"><i></i>Rekonsiliasi</span>':x.status==='SUDAH'?chip('TALLY','TERCATAT SUDAH'):chip('BELUM','BELUM SO')}</td><td>${x.unlocked?'<span class="chip green"><i></i>Dibuka Master</span>':x.eligible?'<span class="chip blue"><i></i>Bisa dipilih</span>':'<span class="chip red"><i></i>Terkunci</span>'}</td>${isAdmin()?`<td>${x.unlocked?btn('Cabut','cov-lock','outline',{sku:x.sku}):!x.eligible?btn('Buka Kunci','cov-unlock','outline',{sku:x.sku}):'<span class="muted small">Tidak perlu</span>'}</td>`:''}</tr>`).join('')||`<tr><td colspan="${isAdmin()?6:4}" class="empty">Tidak ada item pada filter ini.</td></tr>`}
   </tbody></table></div>
   <div class="pager"><span class="small muted">${n(d.total_filtered?c.offset+1:0)}–${n(Math.min(c.offset+50,d.total_filtered))} dari ${n(d.total_filtered)} item</span><div class="row">${btn('← Sebelumnya','cov-prev','outline')}${btn('Berikutnya →','cov-next','outline')}</div></div>
  </div>`;
 }
-const covClearSelection=()=>{state.cov.sel=new Set()};
 CHG['cov-store']=async el=>{const c=state.cov;c.store=el.value;c.offset=0;c.search='';covClearSelection();await showCoverage()};
 ACT['cov-filter']=async el=>{const c=state.cov;c.filter=el.dataset.v;c.offset=0;covClearSelection();await showCoverage()};
 ACT['cov-find']=async()=>{const c=state.cov;c.search=$('#covSearch').value.trim();c.offset=0;covClearSelection();await showCoverage()};
 ACT['cov-clear']=async()=>{const c=state.cov;c.search='';c.filter='ALL';c.offset=0;covClearSelection();await showCoverage()};
-ACT['cov-prev']=async()=>{const c=state.cov;c.offset=Math.max(0,c.offset-50);covClearSelection();await showCoverage()};
-ACT['cov-next']=async()=>{const c=state.cov;if(!c.data||c.offset+50>=c.data.total_filtered)return;c.offset+=50;covClearSelection();await showCoverage()};
-CHG['cov-pick']=el=>{const c=state.cov;c.sel=c.sel||new Set();el.checked?c.sel.add(el.value):c.sel.delete(el.value);const x=$('#covSelCount');if(x)x.textContent=`${n(c.sel.size)} item dipilih`};
-async function covOverride(items,action){
+ACT['cov-prev']=async()=>{const c=state.cov;c.offset=Math.max(0,c.offset-50);await showCoverage()};
+ACT['cov-next']=async()=>{const c=state.cov;if(!c.data||c.offset+50>=c.data.total_filtered)return;c.offset+=50;await showCoverage()};
+CHG['cov-mode']=async el=>{const c=state.cov;c.sel=new Set();c.selectMode=el.value;if(c.selectMode==='PAGE')c.sel=new Set((c.data?.items||[]).map(x=>x.sku));await showCoverage()};
+CHG['cov-pick-page']=el=>{const c=state.cov;const ids=(c.data?.items||[]).map(x=>x.sku);if(c.selectMode==='FILTER')return;c.selectMode='MANUAL';ids.forEach(x=>el.checked?c.sel.add(x):c.sel.delete(x));showCoverage()};
+ACT['cov-selection-clear']=async()=>{covClearSelection();await showCoverage()};
+CHG['cov-pick']=el=>{const c=state.cov;if(c.selectMode==='FILTER')return;c.selectMode='MANUAL';el.checked?c.sel.add(el.value):c.sel.delete(el.value);const x=$('#covSelCount');if(x)x.textContent=`${n(c.sel.size)} item dipilih`;const mode=$('#covSelectMode');if(mode)mode.value='MANUAL';const all=$('[data-change="cov-pick-page"]');if(all)all.checked=(c.data?.items||[]).length>0&&(c.data.items||[]).every(x=>c.sel.has(x.sku))};
+async function covOverride(items,action,useFilter=false){
  if(!isAdmin())throw Error('Hanya Master/Admin.');
- if(!items.length)return toast('Pilih item lebih dahulu.',true);
  const c=state.cov;
- if(items.length>50)throw Error('Maksimal 50 item sekali tindakan.');
+ if(useFilter&&c.selectMode==='FILTER'){
+  const count=Number(c.data?.total_filtered||0);
+  if(!count)return toast('Tidak ada item pada hasil filter.',true);
+  if(count>10000)throw Error('Maksimal 10.000 item per tindakan. Persempit filter.');
+  let reason='';
+  if(action==='UNLOCK'){
+   reason=prompt(`Buka kunci item TERKUNCI dari hasil filter '${c.filter}' toko ${labelStore(c.store)} (${n(count)} item cocok, hanya yang perlu izin akan diproses). Isi alasan minimal 5 karakter:`)||'';
+   if(!reason)return;if(reason.trim().length<5)throw Error('Alasan minimal 5 karakter.');
+  }
+  if(!confirm(`Konfirmasi ${action==='UNLOCK'?'BUKA KUNCI':'CABUT IZIN'} massal untuk toko ${labelStore(c.store)} berdasarkan filter '${c.filter}'? Maksimal ${n(count)} item diperiksa. Hasil SO lama tidak berubah.`))return;
+  const out=await rpc('item_lock_override_filter',{p_store:c.store,p_filter:c.filter,p_search:c.search,p_action:action,p_reason:reason});
+  covClearSelection();toast(`${n(out.changed)} item diperbarui sesuai filter.`);await showCoverage();return;
+ }
+ if(!items.length)return toast('Pilih item lebih dahulu.',true);
+ if(items.length>50)throw Error('Maksimal 50 item pilihan manual. Gunakan mode Semua Hasil Filter untuk jumlah lebih banyak.');
  const label=items.length===1?items[0]:`${items.length} item`;
  let reason='';
  if(action==='UNLOCK'){
@@ -1664,8 +1735,8 @@ async function covOverride(items,action){
 }
 ACT['cov-unlock']=el=>covOverride([el.dataset.sku],'UNLOCK');
 ACT['cov-lock']=el=>covOverride([el.dataset.sku],'LOCK');
-ACT['cov-unlock-selected']=()=>covOverride([...state.cov.sel||[]],'UNLOCK');
-ACT['cov-lock-selected']=()=>covOverride([...state.cov.sel||[]],'LOCK');
+ACT['cov-unlock-selected']=()=>covOverride([...state.cov.sel||[]],'UNLOCK',true);
+ACT['cov-lock-selected']=()=>covOverride([...state.cov.sel||[]],'LOCK',true);
 
 /* ---------- Pembersihan Database (Admin) ---------- */
 const clnParams=()=>({p_audit_days:Math.max(1,Number($('#clnAudit')?.value)||365),p_upload_days:Math.max(1,Number($('#clnUpload')?.value)||30)});
