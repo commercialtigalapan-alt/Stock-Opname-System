@@ -29,7 +29,7 @@ const $=sel=>document.querySelector(sel);
 const $$=sel=>Array.from(document.querySelectorAll(sel));
 const toast=(s,isErr=false)=>{const el=$('#toast');el.textContent=s;el.className='toast'+(isErr?' error':'');clearTimeout(el._t);el._t=setTimeout(()=>el.classList.add('hidden'),5500)};
 const busy=d=>{inflight=Math.max(0,inflight+d);const p=$('#progress');if(p)p.classList.toggle('on',inflight>0)};
-const SYNC_RPCS=new Set(['upload','start','start_cycle','submit','approve','recount','validate_edit','validate_line','schedule_create','schedule_update','schedule_delete','archive_cycles','hard_delete','unlock','ba_sign','ba_sign_bulk','ba_reason_set','ba_adjust','ba_adjust_bulk','ba_clean','assign_user','set_store_spv','set_store_area','rounds_resync','item_lock_override','item_lock_override_filter','activate_user']);
+const SYNC_RPCS=new Set(['upload','start','start_cycle','submit','approve','recount','validate_edit','validate_line','schedule_create','schedule_update','schedule_delete','archive_cycles','hard_delete','unlock','ba_revalidate','ba_sign','ba_sign_bulk','ba_reason_set','ba_adjust','ba_adjust_bulk','ba_clean','assign_user','set_store_spv','set_store_area','rounds_resync','item_lock_override','item_lock_override_filter','activate_user']);
 const rpc=async(name,args={})=>{busy(1);try{const {data,error}=await sb.rpc('tsi_so_'+name,args);if(error){if(!error.code)state.online=false;throw new Error(error.message||'Terjadi kesalahan server')}state.online=true;if(SYNC_RPCS.has(name))notifySync(name,args.p_store||null);return data}finally{busy(-1)}};
 const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 const isoUTC=d=>d.toISOString().slice(0,10);
@@ -1395,7 +1395,7 @@ async function loadValidation(){
  ${noBA?`<div class="note info">SO ini 100% akurasi tanpa selisih, jadi tidak perlu Berita Acara maupun adjustment. SO dianggap selesai.</div>`:''}
  <div class="card">
   <div class="card-head"><div class="row"><h3>Detail Validasi</h3>${noBA?chip('APPROVED','Selesai · tanpa BA'):chip(st)}</div>
-   <div class="row">${editable?btn('Recount','val-recount','danger')+btn('Approve SO','val-approve','primary'):''}${st==='APPROVED'&&!noBA?btn('Buat BA','ba-create','primary',{id:data.cycle_id}):''}${st==='APPROVED'&&!data.archived?btn('Export CSV','val-export','dark'):''}${st==='APPROVED'&&isAdmin()?btn('Hapus Permanen','so-hard-del','danger',{id:data.cycle_id}):''}</div></div>
+   <div class="row">${editable?btn('Kembalikan ke Store (Recount)','val-recount','danger')+btn('Approve SO','val-approve','primary'):''}${st==='APPROVED'&&!noBA?btn('Buat BA','ba-create','primary',{id:data.cycle_id}):''}${st==='APPROVED'&&!data.archived?btn('Export CSV','val-export','dark'):''}${st==='APPROVED'&&isAdmin()?btn('Hapus Permanen','so-hard-del','danger',{id:data.cycle_id}):''}</div></div>
   <div class="toolbar">
    <div class="seg" role="tablist" aria-label="Tampilan Item">
     <button class="${v.filter==='VARIANCE'?'on':''}" data-act="val-filter" data-v="VARIANCE">Variance (${n(sum.variance_skus)})</button>
@@ -1404,7 +1404,7 @@ async function loadValidation(){
    <input id="valSearch" class="input grow" placeholder="Cari item / nama" value="${escapeHTML(v.search)}"/>${btn('Cari','val-find','outline')}${rstHTML('validation')}</div>
   <div class="tablewrap"><table id="valTable" class="val-table"><colgroup><col class="v-item"/><col class="v-system"/><col class="v-pos"/><col class="v-pos"/><col class="v-pos"/><col class="v-pos"/><col class="v-total"/><col class="v-status"/><col class="v-reason"/></colgroup><thead><tr><th class="item-head">Item & Warna</th><th class="num">System</th>${POS.map(([,l])=>`<th class="num">${l}</th>`).join('')}<th class="num">Total Store</th><th>Status</th><th>Alasan</th></tr></thead><tbody>${data.items.map(rowHTML).join('')||'<tr><td colspan="9" class="empty">Tidak ada item.</td></tr>'}</tbody></table></div>
   <div class="pager"><span class="small muted">${n(data.total_filtered?v.offset+1:0)}–${n(Math.min(v.offset+50,data.total_filtered))} / ${n(data.total_filtered)} item</span><div class="row">${btn('← Sebelumnya','val-prev','outline')}${btn('Berikutnya →','val-next','outline')}</div></div>
-  <div class="footerhint">Alasan dan SPV Qty tersimpan otomatis saat diubah. Untuk item selisih, alasan wajib diisi sebelum Approve. Jika SPV Qty kosong, sistem memakai total fisik Store.</div>
+  <div class="footerhint">Jika hitungan fisik tim Store salah, pilih <b>Recount ke Store</b> agar tim Store menghitung ulang seluruh item dalam SO ini. Jika hanya koreksi validasi SPV, edit System, posisi, atau Alasan di tabel lalu Approve ulang. Semua tindakan dicatat di audit.</div>
  </div>`;
 renderPresence();
 }
@@ -1424,7 +1424,18 @@ ACT['val-find']=async()=>{const v=state.validation;v.search=$('#valSearch').valu
 ACT['val-prev']=async()=>{const v=state.validation;v.offset=Math.max(0,v.offset-50);await loadValidation()};
 ACT['val-next']=async()=>{const v=state.validation;if(!v.data||v.offset+50>=v.data.total_filtered)return;v.offset+=50;await loadValidation()};
 ACT['val-approve']=async()=>{const v=state.validation;if(!confirm('Approve SO? Setelah disetujui, hasil akan dikunci.'))return;await rpc('approve',{p_cycle:v.data.cycle_id});toast('SO berhasil APPROVED');await refreshDashboard();await loadValidation()};
-ACT['val-recount']=async()=>{const v=state.validation;const reason=prompt('Alasan Recount (minimal 5 karakter):');if(reason===null)return;await rpc('recount',{p_cycle:v.data.cycle_id,p_reason:reason});toast('SO dikembalikan untuk recount');await refreshDashboard();await loadValidation()};
+ACT['val-recount']=async()=>{
+ const v=state.validation;
+ if(v.data?.status!=='SUBMITTED')throw Error('Recount hanya dapat dilakukan pada SO yang sedang divalidasi.');
+ const reason=prompt('Alasan kesalahan hitung Store (minimal 10 karakter):');
+ if(reason===null)return;
+ if(reason.trim().length<10||reason.trim().length>500)throw Error('Alasan Recount harus 10-500 karakter.');
+ if(!confirm('Kembalikan SELURUH SO ini ke tim Store untuk Recount?\n\nStatus menjadi RECOUNT. Tim Store harus Submit ulang sebelum SPV melakukan Validasi dan Approve. Data SO sebelumnya tidak dihapus dari audit.'))return;
+ await rpc('recount',{p_cycle:v.data.cycle_id,p_reason:reason.trim()});
+ toast('SO dikembalikan ke Store untuk Recount.');
+ v.open=false;v.data=null;
+ await refreshDashboard();await render();
+};
 ACT['val-export']=async()=>{const v=state.validation;const k=await exportCombined([{id:v.data.cycle_id,no:'SO',store:labelStore(state.store),date:'',type:''}]);toast(`CSV diunduh: ${n(k)} item`)};
 
 /* ---------- Export & Pembersihan Database ---------- */
@@ -1911,8 +1922,8 @@ function paintRowBusy(){
 }
 
 // ===== Berita Acara (BA): approval berjenjang SPV lalu Manager, checklist adjust per BA =====
-const BA_MATCH={ALL:()=>true,WAIT_SPV:x=>!x.spv_at,WAIT_MGR:x=>!!x.spv_at&&!x.mgr_at,WAIT_ADJ:x=>!!x.mgr_at&&!x.adj_at,ADJUSTED:x=>!!x.adj_at,NOT_EXPORTED:x=>!x.exported_at};
-const BA_LABEL=[['ALL','Semua'],['WAIT_SPV','Menunggu SPV'],['WAIT_MGR','Menunggu Manager'],['WAIT_ADJ','Belum di-adjust'],['ADJUSTED','Sudah di-adjust'],['NOT_EXPORTED','Belum diekspor']];
+const BA_MATCH={ALL:()=>true,REVALIDATION:x=>!!x.revalidating_at,WAIT_SPV:x=>!x.spv_at&&!x.revalidating_at,WAIT_MGR:x=>!!x.spv_at&&!x.mgr_at&&!x.revalidating_at,WAIT_ADJ:x=>!!x.mgr_at&&!x.adj_at,ADJUSTED:x=>!!x.adj_at,NOT_EXPORTED:x=>!x.exported_at};
+const BA_LABEL=[['ALL','Semua'],['REVALIDATION','Revalidasi'],['WAIT_SPV','Menunggu SPV'],['WAIT_MGR','Menunggu Manager'],['WAIT_ADJ','Belum di-adjust'],['ADJUSTED','Sudah di-adjust'],['NOT_EXPORTED','Belum diekspor']];
 const baState=()=>state.ba||(state.ba={status:'ALL',store:'ALL',open:null,all:[]});
 const baFiltered=b=>(b.all||[]).filter(x=>(BA_MATCH[b.status]||BA_MATCH.ALL)(x)&&(b.store==='ALL'||x.store_code===b.store));
 const fmtDT=t=>t?new Date(t).toLocaleString('id-ID',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Makassar'})+' WITA':'—';
@@ -1929,9 +1940,9 @@ async function showBA(){
  const scope=picked;
  const role=state.me.role;
  const canSpv=role==='spv'||role==='admin',canMgr=role==='admin';
- const cSpv=scope.filter(x=>!x.spv_at).length;
- const cMgr=scope.filter(x=>x.spv_at&&!x.mgr_at&&x.spv_by!==state.me.id).length;
- const cnt={html:scope.length,csv:scope.filter(x=>x.mgr_at).length,mark:scope.filter(x=>x.mgr_at&&!x.adj_at).length,clean:picked.filter(x=>x.exported_at).length,unmark:picked.filter(x=>x.adj_at).length};
+ const cSpv=scope.filter(x=>!x.spv_at&&!x.revalidating_at&&x.so_status==='APPROVED').length;
+ const cMgr=scope.filter(x=>x.spv_at&&!x.mgr_at&&!x.revalidating_at&&x.so_status==='APPROVED'&&x.spv_by!==state.me.id).length;
+ const cnt={html:scope.filter(x=>!x.revalidating_at&&x.so_status==='APPROVED').length,csv:scope.filter(x=>x.mgr_at).length,mark:scope.filter(x=>x.mgr_at&&!x.adj_at).length,clean:picked.filter(x=>x.exported_at).length,unmark:picked.filter(x=>x.adj_at).length};
  const stores=[...new Map(all.map(x=>[x.store_code,x.store_name])).entries()];
  const allOn=rows.length>0&&rows.every(x=>b.sel.has(x.id));
  const act=(lbl,k,c,kind)=>`<button class="btn ${kind}" data-act="ba-run" data-do="${k}" ${c?'':'disabled'}>${lbl} (${n(c)})</button>`;
@@ -1961,11 +1972,11 @@ function baTableHTML(g,b,allOn){return `<div class="tablewrap"><table><thead><tr
    <td><b class="mono">${escapeHTML(x.ba_no)}</b></td>
    <td>${escapeHTML(x.store_name)}</td>
    <td class="small">${fmtDT(x.created_at)}</td>
-   <td>${x.spv_at?`<span class="chip green"><i></i>${escapeHTML(x.spv_name)}</span>`:'<span class="chip gray"><i></i>Menunggu</span>'}</td>
+   <td>${x.revalidating_at?chip('RECOUNT','Revalidasi'):x.spv_at?`<span class="chip green"><i></i>${escapeHTML(x.spv_name)}</span>`:'<span class="chip gray"><i></i>Menunggu</span>'}</td>
    <td>${x.mgr_at?`<span class="chip green"><i></i>${escapeHTML(x.mgr_name)}</span>`:'<span class="chip gray"><i></i>Menunggu</span>'}</td>
    <td><label class="ba-adj"><input type="checkbox" data-change="ba-adj" data-id="${escapeHTML(x.id)}" ${x.adj_at?'checked':''} ${x.mgr_at?'':'disabled'}/> ${x.adj_at?`Sudah · ${escapeHTML(x.adj_name||'')}`:(x.mgr_at?'Tandai sudah':'Setelah Manager')}</label></td>
-   <td>${x.exported_at?chip('TALLY','Sudah'):chip('SUBMITTED','Belum')}</td>
-   <td>${btn('Detail','ba-open','ghost sm',{id:x.id})}</td></tr>`).join('')}
+   <td>${x.revalidating_at?chip('RECOUNT','Ditahan'):x.exported_at?chip('TALLY','Sudah'):chip('SUBMITTED','Belum')}</td>
+   <td><div class="row">${btn('Detail','ba-open','ghost sm',{id:x.id})}${!x.revalidating_at&&x.so_status==='APPROVED'&&!x.mgr_at&&!x.adj_at&&!x.exported_at&&!x.cycle_exported_at&&!x.cycle_archived_at?btn('Revalidasi','ba-revalidate','outline sm',{id:x.id}):''}</div></td></tr>`).join('')}
   </tbody></table></div>`;
 }
 function baArticle(h,s,lines,total,full,editReasons=false){
@@ -1993,20 +2004,52 @@ function baArticle(h,s,lines,total,full,editReasons=false){
 }
 async function loadBADetail(){
  const b=baState();
- const d=await rpc('ba_get',{p_ba:b.open});
+ const [d,review]=await Promise.all([
+  rpc('ba_get',{p_ba:b.open}),
+  rpc('ba_revalidation_history',{p_ba:b.open})
+ ]);
  const h=d.header,s=d.summary||{},lines=d.lines||[],total=s.variance_count||0,role=state.me.role;
- const canSpv=!h.spv_at&&(role==='spv'||role==='admin');
+ const pending=!!review.revalidating;
+ const active=h.so_status==='APPROVED'&&!pending;
+ const canSpv=active&&!h.spv_at&&(role==='spv'||role==='admin');
  const canEditReason=canSpv&&!h.exported_at;
- const canMgr=!h.mgr_at&&!!h.spv_at&&role==='admin';
+ const canMgr=active&&!h.mgr_at&&!!h.spv_at&&role==='admin';
+ const canRevalidate=active&&!review.cycle_exported&&!review.cycle_archived&&!h.mgr_at&&!h.adj_at&&!h.exported_at&&(role==='spv'||role==='admin');
+ const history=review.history||[];
  const stamp=(at,name,empty)=>at?`<b>${escapeHTML(name||'')}</b><small>Ditandatangani secara elektronik · ${fmtDT(at)}</small>`:`<i class="muted">${empty}</i>`;
  $('#content').innerHTML=`<div class="crumb no-print"><button class="btn ghost" data-act="ba-back">← Daftar BA</button></div>
  <div class="card ba-actions no-print">
-  <div class="row"><b class="mono">${escapeHTML(h.ba_no)}</b>${h.adj_at?chip('TALLY','Sudah di-adjust'):chip('SUBMITTED',h.mgr_at?'Siap di-adjust':(h.spv_at?'Menunggu Manager':'Menunggu SPV'))}</div>
-  <div class="row">${canSpv?btn('Tanda tangan SPV','ba-sign','primary',{id:h.id,level:'SPV'}):''}${canMgr?btn('Setujui Manager','ba-sign','dark',{id:h.id,level:'MGR'}):''}${h.mgr_at?btn('Export CSV Adjust','ba-adj-csv','dark'):''}${btn('Unduh HTML','ba-download','ghost')}${btn('Cetak / PDF','ba-print','ghost')}</div>
+  <div class="row"><b class="mono">${escapeHTML(h.ba_no)}</b>${pending?chip('RECOUNT','Sedang Revalidasi'):h.adj_at?chip('TALLY','Sudah di-adjust'):chip('SUBMITTED',h.mgr_at?'Siap di-adjust':(h.spv_at?'Menunggu Manager':'Menunggu SPV'))}</div>
+  <div class="row">${pending?btn('Buka Validasi SPV','ba-to-validation','primary',{id:h.id}):''}${canRevalidate?btn('Revalidasi SO','ba-revalidate','danger',{id:h.id}):''}${canSpv?btn('Tanda tangan SPV','ba-sign','primary',{id:h.id,level:'SPV'}):''}${canMgr?btn('Setujui Manager','ba-sign','dark',{id:h.id,level:'MGR'}):''}${h.mgr_at?btn('Export CSV Adjust','ba-adj-csv','dark'):''}${active?btn('Unduh HTML','ba-download','ghost')+btn('Cetak / PDF','ba-print','ghost'):''}</div>
  </div>
+ ${pending?`<div class="note warning no-print"><b>BA sedang Revalidasi.</b> Hasil BA lama ditahan. Lakukan koreksi di Validasi SPV, lalu Approve SO ulang. Setelah itu ringkasan BA akan diperbarui dan SPV harus menandatangani ulang. Alasan: ${escapeHTML(review.reason||'—')}</div>`:''}
+ ${history.length?`<div class="note info no-print"><b>Riwayat Revalidasi (${n(history.length)}):</b> ${history.slice(0,3).map(x=>`#${n(x.revision)} · ${fmtDT(x.at)} · ${escapeHTML(x.user||'')} — ${escapeHTML(x.reason)}`).join(' | ')}</div>`:''}
  ${canEditReason?'<div class="note info no-print">Kolom Alasan dapat dikoreksi per item sebelum tanda tangan SPV. Perubahan tersimpan otomatis setelah kolom ditinggalkan.</div>':''}
- ${baArticle(h,s,lines,total,false,canEditReason)}`;
+ ${pending?'':baArticle(h,s,lines,total,false,canEditReason)}`;
 }
+ACT['ba-revalidate']=async el=>{
+ await baFlushReasons();
+ const reason=prompt('Alasan kekeliruan Validasi SPV (minimal 10 karakter):');
+ if(reason===null)return;
+ if(reason.trim().length<10||reason.trim().length>500)throw Error('Alasan revalidasi harus 10-500 karakter.');
+ if(!confirm('Kembalikan BA ini ke VALIDASI SPV sebelum persetujuan Manager?\n\nPersetujuan SPV sebelumnya akan dicabut dan dicatat dalam audit. BA ditahan hingga SO di-Approve ulang; nomor BA tetap. Lanjutkan?'))return;
+ const r=await rpc('ba_revalidate',{p_ba:el.dataset.id,p_reason:reason.trim()});
+ const b=baState();b.open=null;
+ const v=state.validation;
+ v.cycle=r.cycle_id;v.open=true;v.offset=0;v.search='';v.filter='VARIANCE';
+ state.store=r.store_code;state.page='validation';
+ toast('BA ditahan untuk Revalidasi. Perbaiki hasil SPV dan Approve ulang.');
+ await refreshDashboard();await render();
+};
+ACT['ba-to-validation']=async el=>{
+ const r=await rpc('ba_revalidation_history',{p_ba:el.dataset.id});
+ if(!r.revalidating)throw Error('BA tidak lagi dalam proses revalidasi.');
+ const row=(baState().all||[]).find(x=>x.id===el.dataset.id);
+ const v=state.validation;
+ v.cycle=r.cycle_id;v.open=true;v.offset=0;v.search='';v.filter='VARIANCE';
+ state.store=row?.store_code||state.store;state.page='validation';
+ baState().open=null;await render();
+};
 ACT['ba-open']=async el=>{baState().open=el.dataset.id;await render()};
 ACT['ba-back']=async()=>{await baFlushReasons();baState().open=null;await render()};
 ACT['ba-filter']=async el=>{baState().status=el.dataset.k;await render()};
@@ -2089,6 +2132,7 @@ async function baMark(ids,done){
 }
 ACT['ba-download']=async()=>{await baDownload([baState().open]);await render()};
 // Satu pintu untuk semua aksi massal. Cakupan: BA yang dicentang, atau semua BA di filter bila tidak ada centang.
+const cntSafeBA=rows=>rows.filter(x=>!x.revalidating_at&&x.so_status==='APPROVED');
 ACT['ba-run']=async el=>{
  await baFlushReasons();
  const b=baState();const k=el.dataset.do;
@@ -2096,11 +2140,11 @@ ACT['ba-run']=async el=>{
  const scope=picked;
  if(!picked.length)return toast('Pilih BA terlebih dahulu dengan mencentangnya.',true);
  if(k==='html'){
-  if(!picked.length&&!confirm(`Unduh ${n(scope.length)} BA dalam satu file dan tandai sudah diekspor?`))return;
-  await baDownload(scope.map(x=>x.id));
+  if(!cntSafeBA(scope).length)throw Error('Tidak ada BA yang siap diekspor. Selesaikan revalidasi terlebih dahulu.');
+  await baDownload(scope.filter(x=>!x.revalidating_at&&x.so_status==='APPROVED').map(x=>x.id));
  }else if(k==='sign-spv'||k==='sign-mgr'){
   const lv=k==='sign-spv'?'SPV':'MGR';
-  const ids=scope.filter(x=>lv==='SPV'?!x.spv_at:(x.spv_at&&!x.mgr_at&&x.spv_by!==state.me.id)).map(x=>x.id);
+  const ids=scope.filter(x=>!x.revalidating_at&&x.so_status==='APPROVED'&&(lv==='SPV'?!x.spv_at:(x.spv_at&&!x.mgr_at&&x.spv_by!==state.me.id))).map(x=>x.id);
   if(!ids.length)return toast('Tidak ada BA yang bisa ditandatangani pada cakupan ini.',true);
   if(!confirm(`${lv==='SPV'?'Tanda tangani':'Setujui'} ${n(ids.length)} BA sebagai ${lv==='SPV'?'SPV':'Manager'}? Nama dan waktu Anda akan tercatat.`))return;
   const r=await rpc('ba_sign_bulk',{p_bas:ids,p_level:lv});
