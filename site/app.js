@@ -572,6 +572,8 @@ async function showSchedule(){
  const sc=state.sch;
  const rows=assignNo(await rpc('schedule_list',{p_store:sc.store||null}));
  sc.rows=rows;
+ const created=sc.justCreated;
+ if(created && rows.some(r=>r.id===created.id)){sc.folders=sc.folders||{};sc.folders[created.store]=true}
  const [from,to]=rangeBounds(sc.range);
  const inR=r=>(!from||(r.planned_date||'')>=from)&&(!to||(r.planned_date||'')<=to);
  const show=rows.filter(r=>r.status!=='APPROVED'||inR(r));
@@ -581,7 +583,7 @@ async function showSchedule(){
   if(!groups.has(r.store_code))groups.set(r.store_code,{name:r.store_name,rows:[]});
   groups.get(r.store_code).rows.push(r);
  }
- $('#content').innerHTML=`<div class="toolbar-top">
+ $('#content').innerHTML=`${created && rows.some(r=>r.id===created.id)?`<div class="note success schedule-created" role="status">Jadwal berhasil disimpan untuk <b>${escapeHTML(labelStore(created.store))}</b> pada ${fmtDate(created.date)}. Nomor SO: <b>${escapeHTML(rows.find(r=>r.id===created.id)?.no||created.id)}</b>. Folder toko dibuka otomatis.</div>`:created?`<div class="note warning schedule-created" role="status">Pembuatan jadwal telah dikonfirmasi server, tetapi tidak ditemukan dalam daftar dengan filter saat ini. Periksa toko dan Refresh; referensi ${escapeHTML(created.id)}.</div>`:''}<div class="toolbar-top">
   <div class="pills"><span class="pill-stat">Belum Selesai · ${n(open)}</span><span class="pill-stat ok">Selesai pada periode · ${n(doneP)}</span></div>
   <div class="toolbar-right"><select class="input select" data-change="sch-filter">${storeOptions(sc.store,true)}</select>
    ${btn('+ Partial SO','b-open','outline',{type:'PARTIAL'})}${btn('+ Grand SO','b-open','primary',{type:'GRAND'})}</div></div>
@@ -589,7 +591,7 @@ async function showSchedule(){
  <div class="note info">${isAdmin()||state.me.role==='spv'?'Jadwal per toko. SO yang sudah APPROVED tampil sesuai rentang tanggal yang dipilih.':'Jadwal SO toko Anda. Buat, ubah, atau hapus jadwal yang belum diproses, lalu klik Proses untuk memulai SO.'}</div>
  ${groups.size?[...groups.values()].map(g=>{const run=g.rows.filter(r=>['COUNTING','RECOUNT'].includes(r.status)).length;const busy=g.rows.some(r=>['COUNTING','RECOUNT','SUBMITTED'].includes(r.status));const code=g.rows[0].store_code;const isOpen=(state.sch.folders||{})[code]??busy;return `<details class="card store-folder" data-code="${escapeHTML(code)}" ${isOpen?'open':''}>
    <summary><span class="sf-name">📁 ${escapeHTML(g.name)}</span><span class="sf-meta">${n(g.rows.length)} SO${run?` · ${n(run)} sedang berjalan`:''}</span></summary>
-   <div class="tablewrap"><table><thead><tr><th>SO</th><th>Tanggal</th><th>PIC</th><th>Status</th><th class="num">Item</th><th>Action</th></tr></thead><tbody>${g.rows.map(r=>`<tr><td><b class="mono">${escapeHTML(r.no)}</b><br><small class="muted">${r.so_type==='PARTIAL'?'PARTIAL':'GRAND'}${r.start_time?' • '+escapeHTML(r.start_time.slice(0,5)):''}${r.team_map?' • per tim/POS':(r.scope_rule?' • category/warna':'')}</small></td><td>${fmtDate(r.planned_date)}</td><td>${escapeHTML(r.pic||'-')}</td><td>${chip(r.status)}</td><td class="num">${n(r.scope_count)}</td><td class="actions">${schActions(r)}</td></tr>`).join('')}</tbody></table></div>
+   <div class="tablewrap"><table><thead><tr><th>SO</th><th>Tanggal</th><th>PIC</th><th>Status</th><th class="num">Item</th><th>Action</th></tr></thead><tbody>${g.rows.map(r=>`<tr data-cycle="${escapeHTML(r.id)}" class="${created?.id===r.id?'schedule-new-row':''}"><td><b class="mono">${escapeHTML(r.no)}</b><br><small class="muted">${r.so_type==='PARTIAL'?'PARTIAL':'GRAND'}${r.start_time?' • '+escapeHTML(r.start_time.slice(0,5)):''}${r.team_map?' • per tim/POS':(r.scope_rule?' • category/warna':'')}</small></td><td>${fmtDate(r.planned_date)}</td><td>${escapeHTML(r.pic||'-')}</td><td>${chip(r.status)}</td><td class="num">${n(r.scope_count)}</td><td class="actions">${schActions(r)}</td></tr>`).join('')}</tbody></table></div>
   </details>`}).join(''):'<div class="card empty">Belum ada SO pada filter ini.'+' Klik + Partial SO atau + Grand SO untuk membuat jadwal.</div>'}`;
 }
 document.addEventListener('toggle',e=>{const d=e.target;if(d&&d.classList&&d.classList.contains('store-folder')&&d.dataset.code){state.sch.folders=state.sch.folders||{};state.sch.folders[d.dataset.code]=d.open}},true);
@@ -636,8 +638,8 @@ function ownerScope(b,owner){return owner==='main'?b.scope:b.teams[Number(owner)
 function teamsPayload(b){return b.teams.map(t=>({name:(t.name||'').trim()||'Tim',rule:ruleOf(t.scope,b.stats)}))}
 function openBuilder(type,cycle){
  const sc=state.sch;const edit=!!cycle;
- const b={mode:edit?'edit':'create',cycleId:cycle?.id||null,type:edit?cycle.so_type:(type||'GRAND'),store:edit?cycle.store_code:(sc.store||state.stores[0]?.code||''),
-  scopeMode:'ALL',scope:newScope(),teams:[],stats:new Map(),statsErrors:new Map(),catList:null,skuQ:'',timer:null,previewSeq:0};
+ const b={mode:edit?'edit':'create',cycleId:cycle?.id||null,type:edit?cycle.so_type:(type||'GRAND'),store:edit?cycle.store_code:(sc.store||state.store||state.stores[0]?.code||''),
+  scopeMode:'ALL',scope:newScope(),teams:[],stats:new Map(),statsErrors:new Map(),catList:null,skuQ:'',timer:null,previewSeq:0,previewResult:null,saveError:''};
  if(edit){
   b.scope=scopeFromRule(cycle.scope_rule);
   b.teams=(cycle.team_map||[]).map(t=>({name:t.name,scope:scopeFromRule(t.rule)}));
@@ -665,7 +667,7 @@ function openBuilder(type,cycle){
    </div>
    <div class="pcol" id="pCol"><div class="step"><span>2</span><h4>Preview Schedule</h4></div><div id="bPreview"></div></div>
   </div>
-  <div class="modal-foot"><button class="btn outline" data-act="b-close">Batal</button><button class="btn primary" data-act="b-save">${edit?'Simpan Perubahan':'Create Schedule'}</button></div>
+  <div class="modal-foot"><div id="bSaveStatus" class="builder-save-status" role="alert" aria-live="assertive"></div><button class="btn outline" data-act="b-close">Batal</button><button class="btn primary" data-act="b-save">${edit?'Simpan Perubahan':'Create Schedule'}</button></div>
  </div>`;
  document.body.appendChild(ov);
  renderScope().catch(ex=>toast(ex.message,true));
@@ -675,7 +677,7 @@ ACT['b-close']=()=>closeBuilder();
 ACT['b-type']=async el=>{const b=state.builder;if(!b)return;b.type=el.dataset.v;if(b.type==='PARTIAL'&&b.scopeMode==='ALL')b.scopeMode='SCOPE';
  $$('#bCol [data-act="b-type"]').forEach(x=>x.classList.toggle('on',x.dataset.v===b.type));await renderScope()};
 ACT['b-mode']=async el=>{const b=state.builder;if(!b)return;b.scopeMode=el.dataset.v;if(b.scopeMode==='TEAMS'&&!b.teams.length)b.teams.push({name:'POS 1',scope:newScope()});await renderScope()};
-CHG['b-store']=async el=>{const b=state.builder;if(!b)return;b.store=el.value;b.scope=newScope();b.teams=[];b.stats=new Map();b.statsErrors=new Map();b.catList=null;await renderScope()};
+CHG['b-store']=async el=>{const b=state.builder;if(!b)return;b.store=el.value;b.scope=newScope();b.teams=[];b.stats=new Map();b.statsErrors=new Map();b.catList=null;b.previewResult=null;b.saveError='';await renderScope()};
 CHG['b-field']=()=>schedulePreview();
 
 async function ensureStats(b,cats){
@@ -870,6 +872,7 @@ async function updatePreview(){
   }
  }catch(ex){err=ex.message}
  if(state.builder!==b||seq!==b.previewSeq||!$('#bPreview'))return;
+ b.previewResult={store,mode:b.scopeMode,count:Number(info.count)||0,error:err};
  if(teamRes){teamRes.teams.forEach((t,i)=>{const el=$('#tc'+i);if(el)el.textContent=`${n(t.count)} item`})}
  const desc=b.scopeMode==='ALL'?'Seluruh item yang eligible':b.scopeMode==='SCOPE'?`${n(b.scope.cats.size)} category • ${n(b.scope.skus.size)} Item manual`:`${n(b.teams.length)} tim/POS`;
  $('#bPreview').innerHTML=`<div class="prev">
@@ -905,15 +908,43 @@ ACT['b-save']=async()=>{
   if(!b.teams.length)throw Error('Tambahkan minimal satu tim/POS.');
   p_teams=teamsPayload(b);
  }
- if(b.mode==='create'){
-  if(!confirm(`Simpan jadwal ${b.type==='GRAND'?'Grand':'Partial'} SO untuk ${labelStore(store)} pada ${date}?`))return;
-  const out=await rpc('schedule_create',{p_store:store,p_type:b.type,p_date:date,p_start:start,p_end:end,p_notes:notes,p_rule,p_teams});
-  toast(`Jadwal dibuat: ${n(out.scope_count)} item`);
- }else{
-  await rpc('schedule_update',{p_cycle:b.cycleId,p_type:b.type,p_date:date,p_start:start,p_end:end,p_notes:notes,p_rule,p_teams});
-  toast('Jadwal diperbarui');
+ // Periksa scope pada database SAAT tombol Create diklik, bukan mengandalkan
+ // preview asynchronous yang bisa ketinggalan pilihan terakhir.
+ const statusEl=$('#bSaveStatus');if(statusEl)statusEl.textContent='Memeriksa item eligible...';
+ try{
+  const p=b.scopeMode==='TEAMS'
+    ?await rpc('teams_preview',{p_store:store,p_teams})
+    :await rpc('scope_preview',{p_store:store,p_type:b.type,p_rule:b.scopeMode==='ALL'?{}:p_rule});
+  const count=Number(p?.count)||0;
+  if(count<1)throw Error('Jadwal belum dibuat: 0 item bisa di-SO pada pilihan ini. Buka Cakupan Item untuk memeriksa penguncian atau pilih warna/item lain.');
+  if(b.mode==='create'){
+   if(!confirm(`Buat jadwal ${b.type==='GRAND'?'Grand':'Partial'} SO untuk ${labelStore(store)} pada ${date} dengan ${n(count)} item?`)){
+    if(statusEl)statusEl.textContent='Pembuatan dibatalkan.';return;
+   }
+   if(statusEl)statusEl.textContent='Menyimpan jadwal ke database...';
+   const out=await rpc('schedule_create',{p_store:store,p_type:b.type,p_date:date,p_start:start,p_end:end,p_notes:notes,p_rule,p_teams});
+   if(!out?.cycle_id||!(Number(out.scope_count)>0))throw Error('Server belum mengonfirmasi nomor/jumlah item jadwal. Periksa daftar sebelum mengulangi Create agar tidak duplikat.');
+   state.sch.folders=state.sch.folders||{};
+   state.sch.folders[store]=true;
+   state.sch.store=store; // tampilkan toko tempat jadwal baru benar-benar tersimpan
+   state.sch.justCreated={id:out.cycle_id,store,date};
+  }else{
+   await rpc('schedule_update',{p_cycle:b.cycleId,p_type:b.type,p_date:date,p_start:start,p_end:end,p_notes:notes,p_rule,p_teams});
+   state.sch.folders=state.sch.folders||{};state.sch.folders[store]=true;state.sch.store=store;
+  }
+  closeBuilder();
+  // Respons Create yang sukses tidak boleh berubah menjadi "gagal menyimpan"
+  // hanya karena permintaan daftar yang terpisah sedang mengalami gangguan.
+  try{
+   await showSchedule();
+   toast(b.mode==='create'?`Jadwal disimpan: ${n(count)} item. Lihat folder ${labelStore(store)}.`:'Jadwal diperbarui.');
+  }catch(refreshErr){
+   toast('Jadwal berhasil tersimpan, tetapi daftar gagal dimuat. Klik Refresh, jangan tekan Create ulang.',true);
+  }
+ }catch(ex){
+  if(statusEl?.isConnected)statusEl.textContent='Tidak dapat mengonfirmasi Create: '+ex.message+' Periksa daftar jadwal sebelum mencoba lagi.';
+  throw ex;
  }
- closeBuilder();await render();
 };
 
 /* ---------- SO Counting: 4 posisi, total, status TALLY/SELISIH (system tidak ditampilkan), alasan wajib saat selisih ---------- */
