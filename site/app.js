@@ -11,7 +11,8 @@ const state={me:null,stores:[],dashboard:[],page:'dashboard',store:'',online:tru
  exp:{store:'',range:null,rows:[],sel:new Set()},
  count:{offset:0,search:'',filter:'ALL',team:'',data:null,open:false,sel:new Set(),listQ:'',rows:[]},
  validation:{offset:0,search:'',filter:'VARIANCE',status:'ALL',data:null,open:false,cycle:'',listQ:'',rows:[]},
- builder:null,cov:{store:'',filter:'ALL',search:'',offset:0,data:null,selectMode:'MANUAL',sel:new Set()}};
+ builder:null,cov:{store:'',filter:'ALL',search:'',offset:0,data:null,selectMode:'MANUAL',sel:new Set(),skipMode:false,skipSearch:'',skipOffset:0,skipSelected:new Map(),skipReason:'TIDAK_TERSEDIA',skipNote:''},
+ tracking:{store:'',search:'',category:'',color:'',from:'',to:'',month:'',year:'',kind:'ALL',offset:0,data:null,options:null}};
 let upRows=[];
 let upCheck=null;
 let upConflicts=[];
@@ -44,6 +45,7 @@ const chip=(s,label)=>`<span class="chip ${TONE[s]||'gray'}"><i></i>${escapeHTML
 const labelStore=code=>state.stores.find(x=>x.code===code)?.name||code;
 const wrap=html=>root.innerHTML=html;
 const isAdmin=()=>state.me.role==='admin';
+const canSkipStore=()=>state.me?.role==='admin'||state.me?.role==='store';
 const canManage=()=>state.me.role==='admin'||state.me.role==='spv';
 const btn=(label,act,kind='',attrs={})=>`<button class="btn ${kind}" data-act="${act}"${Object.entries(attrs).map(([k,v])=>` data-${k}="${escapeHTML(v)}"`).join('')}>${label}</button>`;
 const ACT={};
@@ -57,7 +59,8 @@ document.addEventListener('click',async e=>{
 });
 document.addEventListener('change',async e=>{const el=e.target.closest('[data-change]');if(!el)return;const fn=CHG[el.dataset.change];if(!fn)return;try{await fn(el)}catch(err){toast(err.message,true)}});
 document.addEventListener('input',e=>{
- if(e.target.id==='cListSearch'){state.count.listQ=e.target.value;drawCountRows()}
+ if(e.target.id==='covSkipNote'){state.cov.skipNote=e.target.value}
+ else if(e.target.id==='cListSearch'){state.count.listQ=e.target.value;drawCountRows()}
  else if(e.target.id==='vListSearch'){state.validation.listQ=e.target.value;drawValRows()}
 });
 
@@ -216,6 +219,7 @@ const PAGE={
  schedule:['SO Schedule','Jadwal Partial dan Grand Stock Opname per toko'],
  count:['SO Counting','Hitung stok per posisi di desktop, tablet, atau smartphone'],
  coverage:['Cakupan Item','Bukti fisik dan penyelesaian cakupan (termasuk Lewati barang tidak tersedia)'],
+ tracking:['Tracking SO','Riwayat fisik, petugas, tanggal, status dan item dilewati per toko'],
  validation:['Validasi SPV','Review hasil counting toko, validasi selisih, lalu approve SO'],
  export:['Export & Pembersihan','Export hasil SO APPROVED ke CSV, lalu bersihkan detail dari database'],
  upload:['Upload Inventory','Ganti inventory aktif toko. System qty SO yang berjalan ikut diperbarui sampai SUBMITTED'],
@@ -227,6 +231,7 @@ function menu(){const p=state.me.role;return [
  ['schedule','SO Schedule','▦','STOCK OPNAME'],
  ['count','Counting','☑','STOCK OPNAME'],
  ['coverage','Cakupan Item','◎','STOCK OPNAME'],
+ ['tracking','Tracking SO','◷','STOCK OPNAME'],
  ...(p!=='store'?[['validation','Validasi SPV','✓','STOCK OPNAME']]:[]),
  ...(p!=='store'?[['ba','Berita Acara','§','STOCK OPNAME']]:[]),
  ...(p!=='store'?[['export','Export & Pembersihan','⤓','REPORT & SETTINGS']]:[]),
@@ -282,6 +287,7 @@ async function render(){
   if(state.page==='schedule')await showSchedule();
   if(state.page==='count')await showCount();
   if(state.page==='coverage')await showCoverage();
+  if(state.page==='tracking')await showTracking();
   if(state.page==='validation')await showValidation();
   if(state.page==='ba')await showBA();
   if(state.page==='export')await showExport();
@@ -294,6 +300,69 @@ async function render(){
 async function loadBadges(){try{const k=await rpc('kpi',{});state.badges={schedule:k.so_scheduled+k.so_running,count:k.so_running+k.so_scheduled,validation:k.so_submitted}}catch(e){state.badges={}}}
 function storeOptions(sel,all){return `${all?'<option value="">Semua Store</option>':''}${state.stores.map(s=>`<option value="${escapeHTML(s.code)}" ${s.code===sel?'selected':''}>${escapeHTML(s.name)}</option>`).join('')}`}
 async function refreshDashboard(){const res=await rpc('dashboard');state.dashboard=res.stores||[]}
+
+/* ---------- Tracking SO: dapat dibuka Store (hanya tokonya), SPV (toko binaan), Admin (semua toko) ---------- */
+const TRACK_MONTHS=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+function trackDateTime(x){if(!x)return '—';const d=new Date(x);return Number.isNaN(d.getTime())?'—':d.toLocaleString('id-ID',{timeZone:'Asia/Makassar',day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}).replace('.',':')+' WITA'}
+function trackOptionValues(values,sel,allLabel){return `<option value="">${escapeHTML(allLabel)}</option>`+(values||[]).map(v=>`<option value="${escapeHTML(v)}" ${v===sel?'selected':''}>${escapeHTML(v)}</option>`).join('')}
+const trackNum=v=>v===null||v===undefined?'—':n(v);
+async function showTracking(){
+ const t=state.tracking;
+ if(state.me.role==='store')t.store=state.me.store_code;
+ else if(t.store&&!state.stores.some(x=>x.code===t.store))t.store='';
+ if(!t.options){t.options=await rpc('tracking_filters',{p_store:t.store||''});}
+ const d=await rpc('tracking_page',{p_store:t.store||'',p_search:t.search,p_category:t.category,p_color:t.color,
+   p_start:t.from||null,p_end:t.to||null,p_month:t.month?Number(t.month):null,
+   p_year:t.year?Number(t.year):null,p_type:t.kind,p_offset:t.offset,p_limit:50});
+ if(d.version!==44)throw Error('Jalankan SQL Migrasi 042 sebelum membuka Tracking SO.');
+ t.data=d;const sm=d.summary||{},rows=d.items||[];
+ const kind=(r)=>r.kind==='LEWATI'?'<span class="chip orange">Dilewati</span>':`<span class="chip ${r.status==='APPROVED'?'green':'blue'}">${r.status==='APPROVED'?'Hasil Fisik':escapeHTML(r.status||'Fisik')}</span>`;
+ const detail=(r)=>r.kind==='LEWATI'
+  ?`<div><b>Alasan Lewati:</b> ${escapeHTML(r.reason||'—')}</div><div><b>Dikonfirmasi oleh:</b> ${escapeHTML(r.actor||'—')}</div><div class="small muted">Item ini bukan hasil hitung fisik, tidak membuat selisih atau BA.</div>`
+  :`<div class="track-meta"><span>Display: <b>${trackNum(r.display)}</b></span><span>Reject: <b>${trackNum(r.reject)}</b></span><span>Rak Utama: <b>${trackNum(r.rak_utama)}</b></span><span>Rak Cadangan: <b>${trackNum(r.rak_cadangan)}</b></span><span>Tim: <b>${escapeHTML(r.team||'—')}</b></span></div>
+    <div><b>Petugas pembuka SO:</b> ${escapeHTML(r.started_by||'—')}</div><div><b>Terakhir input/edit:</b> ${escapeHTML(r.actor||'—')}</div>
+    <div><b>Approved SPV:</b> ${escapeHTML(r.approved_by||'—')} · ${trackDateTime(r.approved_at)}</div>
+    <div><b>Alasan Store:</b> ${escapeHTML(r.store_note||'—')}</div><div><b>Alasan SPV:</b> ${escapeHTML(r.spv_note||'—')}</div>
+    <div class="small muted">Referensi SO: ${escapeHTML(r.reference||'—')}</div>`;
+ const cards=[['Aktivitas',sm.total],['Dihitung Fisik',sm.fisik],['Dilewati',sm.lewati],['Tally Approved',sm.tally],['Selisih Approved',sm.selisih]];
+ $('#content').innerHTML=`<div class="card track-filter-card">
+  <div class="card-head"><div><h3>Tracking SO per Item</h3><p class="muted small">Lihat kapan item dihitung/dilewati, toko, petugas, hasil dan alasan. Filter dapat digabung.</p></div></div>
+  <div class="track-filter-grid">
+   <label>Toko${state.me.role==='store'?`<div class="track-readonly">${escapeHTML(labelStore(t.store))}</div>`:`<select id="trackStore" class="input select" data-change="track-store">${storeOptions(t.store,true)}</select>`}</label>
+   <label>Cari Nama Item<input class="input" id="trackSearch" maxlength="120" placeholder="Nama item / ukuran" value="${escapeHTML(t.search)}"/></label>
+   <label>Kategori<select class="input select" id="trackCategory">${trackOptionValues(t.options.categories,t.category,'Semua kategori')}</select></label>
+   <label>Warna<select class="input select" id="trackColor">${trackOptionValues(t.options.colors,t.color,'Semua warna')}</select></label>
+   <label>Dari Tanggal<input type="date" id="trackFrom" class="input" value="${escapeHTML(t.from)}"/></label>
+   <label>Sampai Tanggal<input type="date" id="trackTo" class="input" value="${escapeHTML(t.to)}"/></label>
+   <label>Bulan<select id="trackMonth" class="input select"><option value="">Semua bulan</option>${TRACK_MONTHS.map((x,i)=>`<option value="${i+1}" ${t.month===String(i+1)?'selected':''}>${x}</option>`).join('')}</select></label>
+   <label>Tahun<input id="trackYear" class="input" type="number" min="2000" max="2100" placeholder="Semua tahun" value="${escapeHTML(t.year)}"/></label>
+   <label>Jenis Aktivitas<select id="trackKind" class="input select"><option value="ALL" ${t.kind==='ALL'?'selected':''}>Fisik dan Lewati</option><option value="FISIK" ${t.kind==='FISIK'?'selected':''}>Dihitung Fisik</option><option value="LEWATI" ${t.kind==='LEWATI'?'selected':''}>Dilewati</option></select></label>
+  </div>
+  <div class="row track-actions">${btn('Terapkan Filter','track-apply','primary')}${btn('Reset Filter','track-reset','outline')}</div>
+ </div>
+ <div class="mini-row">${cards.map(([label,num],i)=>`<div class="mini ${i===2?'o':'g'}"><small>${label}</small><b>${n(num)}</b></div>`).join('')}</div>
+ ${d.missing_archive_cycles?`<div class="note warning">Ada ${n(d.missing_archive_cycles)} SO terarsip yang detail itemnya sudah dibersihkan sebelum fitur Tracking. Rincian item lamanya tidak dapat direkonstruksi secara pasti; laporan ini tidak membuat data perkiraan.</div>`:''}
+ <div class="card"><div class="card-head"><h3>Riwayat Aktivitas Item</h3><span class="muted small">${n(d.total_filtered)} hasil sesuai filter · 50 baris per halaman</span></div>
+ <div class="tablewrap"><table class="track-table"><thead><tr><th>Waktu (WITA)</th><th>Toko</th><th>Nama Item</th><th>Kategori / Warna</th><th>Jenis</th><th class="num">Sistem</th><th class="num">Aktual</th><th class="num">Selisih</th><th>Pengguna</th><th>Rincian</th></tr></thead><tbody>
+ ${rows.map(r=>`<tr><td class="track-time">${trackDateTime(r.at)}</td><td>${escapeHTML(r.store_name||r.store_code)}</td><td class="track-name">${escapeHTML(r.name)}</td><td>${escapeHTML(r.category||'—')}<span class="track-color">${escapeHTML(r.color||'—')}</span></td><td>${kind(r)}</td><td class="num">${trackNum(r.system)}</td><td class="num">${trackNum(r.actual)}</td><td class="num">${r.difference===null||r.difference===undefined?'—':signed(r.difference)}</td><td>${escapeHTML(r.actor||'—')}</td><td><details class="track-details"><summary>Lihat</summary><div class="track-detail-box">${detail(r)}</div></details></td></tr>`).join('')||'<tr><td colspan="10" class="empty">Tidak ada riwayat yang cocok dengan filter. Coba perluas rentang tanggal atau ubah kategori.</td></tr>'}
+ </tbody></table></div>
+ <div class="pager"><span class="small muted">${n(d.total_filtered?t.offset+1:0)}–${n(Math.min(t.offset+50,d.total_filtered))} dari ${n(d.total_filtered)} aktivitas</span><div class="row">${btn('← Sebelumnya','track-prev','outline')}${btn('Berikutnya →','track-next','outline')}</div></div>
+ <p class="small muted">Catatan: petugas yang tampil adalah pengguna terakhir yang menyimpan/mengubah baris, bukan bukti identitas orang yang memegang barang. Ketika SO belum Approved, akun Store tidak dapat melihat stok sistem, angka selisih, atau hasil koreksi SPV.</p></div>`;
+}
+ACT['track-apply']=async()=>{
+ const t=state.tracking;
+ t.search=$('#trackSearch')?.value.trim()||'';
+ t.category=$('#trackCategory')?.value||'';t.color=$('#trackColor')?.value||'';
+ t.from=$('#trackFrom')?.value||'';t.to=$('#trackTo')?.value||'';
+ t.month=$('#trackMonth')?.value||'';t.year=$('#trackYear')?.value||'';
+ t.kind=$('#trackKind')?.value||'ALL';t.offset=0;
+ if(t.from&&t.to&&t.from>t.to)throw Error('Tanggal awal tidak boleh setelah tanggal akhir.');
+ await showTracking();
+};
+ACT['track-reset']=async()=>{const t=state.tracking;Object.assign(t,{search:'',category:'',color:'',from:'',to:'',month:'',year:'',kind:'ALL',offset:0});await showTracking()};
+CHG['track-store']=async el=>{const t=state.tracking;t.store=el.value;t.options=null;t.offset=0;t.category='';t.color='';await showTracking()};
+ACT['track-prev']=async()=>{const t=state.tracking;t.offset=Math.max(0,t.offset-50);await showTracking()};
+ACT['track-next']=async()=>{const t=state.tracking;if(t.offset+50>=Number(t.data?.total_filtered||0))return;t.offset+=50;await showTracking()};
 
 /* ---------- Dashboard ---------- */
 function accuracyOf(k){
@@ -1693,6 +1762,7 @@ const covClearSelection=()=>{state.cov.sel=new Set();state.cov.selectMode='MANUA
 const covSelectedCount=()=>{const c=state.cov;return c.selectMode==='FILTER'?Number(c.data?.total_filtered||0):c.sel.size};
 async function showCoverage(){
  const c=state.cov;
+ if(c.skipMode){await showSkipWizard();return;}
  if(state.me.role==='store')c.store=state.me.store_code;
  else if(!c.store)c.store=state.store||state.stores[0]?.code||'';
  c.sel=c.sel||new Set();c.selectMode=c.selectMode||'MANUAL';
@@ -1705,6 +1775,7 @@ async function showCoverage(){
  const filters=[['ALL','Semua'],['BELUM','Belum dihitung'],['SUDAH','Sudah dihitung'],['DILEWATI','Dilewati'],['DIPILIH','Bisa dipilih'],['TERKUNCI','Terkunci'],['REVIEW','Perlu verifikasi'],['KOREKSI','Rekonsiliasi'],['DIBUKA','Dibuka Master']];
  const mode=c.selectMode;
  $('#content').innerHTML=`${isAdmin()?`<div class="card"><div class="card-head"><h3>Audit Rasio SO</h3><span class="muted small">Periksa sebelum sinkronisasi; histori arsip tidak boleh dihapus</span></div><div class="row">${btn('Cek Rasio','cov-sync-check','outline')}${btn('Sinkronkan (hanya jika aman)','cov-sync-apply','outline')}</div><div id="covSync" class="note info small">Untuk item dengan detail SO historis yang tidak lengkap, gunakan Buka Kunci Master. Rasio aslinya tetap disimpan.</div></div>`:''}
+ ${canSkipStore()?`<div class="card cov-skip-entry"><div class="cov-skip-entry-text"><h3>Barang tidak ada di toko?</h3><p>Pilih nama item yang tidak tersedia fisiknya, tentukan alasan, lalu konfirmasi. Item akan masuk penyelesaian cakupan, <b>bukan</b> hasil hitung fisik.</p><small>Hanya item dengan stok sistem 0 dan tanpa SO aktif yang dapat dilewati. ${state.me.role==='store'?'Akun Store hanya dapat melewati item tokonya sendiri.':'Admin dapat memilih toko yang akan diperiksa.'}</small></div>${btn('Mulai Lewati Barang','cov-skip-open','primary')}</div>`:''}
  <div class="card filter-card"><div class="filters">
    ${state.me.role!=='store'?`<select class="input select" data-change="cov-store">${storeOptions(c.store,false)}</select>`:`<span class="chip blue">${escapeHTML(labelStore(c.store))}</span>`}
    <input id="covSearch" class="input grow" placeholder="Cari nama item" value="${escapeHTML(c.search)}"/>
@@ -1746,6 +1817,71 @@ async function showCoverage(){
   <div class="pager"><span class="small muted">${n(d.total_filtered?c.offset+1:0)}–${n(Math.min(c.offset+50,d.total_filtered))} dari ${n(d.total_filtered)} item</span><div class="row">${btn('← Sebelumnya','cov-prev','outline')}${btn('Berikutnya →','cov-next','outline')}</div></div>
  </div>`;
 }
+/* ---------- v44: Lewati barang sederhana untuk akun toko sendiri ---------- */
+const SKIP_REASONS=[
+ ['TIDAK_TERSEDIA','Barang tidak tersedia secara fisik di toko'],
+ ['BELUM_DITERIMA','Item terdaftar tetapi belum pernah diterima toko'],
+ ['TIDAK_DIJUAL','Item tidak dijual atau tidak disimpan di toko'],
+ ['LAINNYA','Alasan lain (tulis di keterangan)']
+];
+function covSkipUiUpdate(){
+ const c=state.cov,count=c.skipSelected?.size||0;
+ const x=$('#covSkipPicked');if(x)x.textContent=`${n(count)} item dipilih (maks. 50)`;
+ const b=$('#covSkipConfirm');if(b){b.disabled=count===0;b.textContent=`Konfirmasi Lewati ${n(count)} Item`;}
+ const page=$('[data-change="cov-skip-page-check"]');
+ if(page)page.checked=!!(c.skipData?.items?.length && c.skipData.items.every(x=>c.skipSelected.has(x.item_key)));
+}
+async function showSkipWizard(){
+ const c=state.cov;
+ if(!canSkipStore())throw Error('Fitur Lewati hanya untuk Admin atau akun Store.');
+ if(state.me.role==='store')c.store=state.me.store_code;
+ c.skipSelected=c.skipSelected||new Map();c.skipReason=c.skipReason||'TIDAK_TERSEDIA';
+ const d=await rpc('skip_candidates',{p_store:c.store,p_search:c.skipSearch||'',p_offset:c.skipOffset||0,p_limit:50});
+ if(d?.version!==44)throw Error('Jalankan migrasi SQL 041 sebelum menggunakan fitur Lewati untuk Store.');
+ c.skipData=d;
+ const opt=SKIP_REASONS.map(([code,label])=>`<option value="${code}" ${c.skipReason===code?'selected':''}>${label}</option>`).join('');
+ const selCount=c.skipSelected.size;
+ $('#content').innerHTML=`<div class="row" style="justify-content:space-between;margin-bottom:12px"><div><h2 style="margin:0 0 5px">Lewati Barang Tidak Ada</h2><p class="small muted" style="margin:0">${escapeHTML(labelStore(c.store))} · Selesaikan cakupan tanpa mengisi hitungan fisik</p></div>${btn('Kembali ke Cakupan Item','cov-skip-back','outline')}</div>
+ <div class="card cov-skip-wizard">
+  <div class="cov-skip-steps"><div><b>1</b> Cari dan centang item tidak ada</div><div><b>2</b> Pilih alasan</div><div><b>3</b> Konfirmasi Lewati</div></div>
+  <div class="note info">Hanya menampilkan item dengan <b>stok sistem 0</b>, memenuhi syarat cakupan, dan <b>tidak masuk SO aktif</b>. Lewati tidak mengubah stok, hasil Counting, akurasi, atau BA. Pilihan ditandai dalam riwayat aktivitas.</div>
+  <div class="row cov-skip-search"><input id="covSkipSearch" class="input grow" placeholder="Cari nama item / warna" value="${escapeHTML(c.skipSearch||'')}" />${btn('Cari Item','cov-skip-find','outline')}${btn('Pilih semua halaman','cov-skip-page','outline')}${btn('Kosongkan Pilihan','cov-skip-clear','outline')}</div>
+  <div class="row cov-skip-meta"><span><b>${n(d.total_available)} item</b> bisa dilewati di toko ini</span><span>${n(d.total_filtered)} sesuai pencarian</span><b id="covSkipPicked">${n(selCount)} item dipilih (maks. 50)</b></div>
+  <div class="tablewrap"><table class="cov-skip-table"><thead><tr><th style="width:58px"><input type="checkbox" data-change="cov-skip-page-check" aria-label="Pilih semua item pada halaman" ${(d.items||[]).length>0&&(d.items||[]).every(x=>c.skipSelected.has(x.item_key))?'checked':''}/></th><th>Nama Item &amp; Warna</th><th>Kategori</th><th>Stok Sistem</th></tr></thead><tbody>${(d.items||[]).map(x=>`<tr><td><input type="checkbox" data-change="cov-skip-pick" value="${escapeHTML(x.item_key)}" data-name="${escapeHTML(x.item_name)}" ${c.skipSelected.has(x.item_key)?'checked':''} aria-label="Pilih ${escapeHTML(x.item_name)}" /></td><td class="nm"><b>${escapeHTML(x.item_name)}</b></td><td>${escapeHTML(x.category||'—')}</td><td class="num">0</td></tr>`).join('')||'<tr><td colspan="4" class="empty">Tidak ada item yang bisa dilewati untuk pencarian ini. Item yang masih berstok atau masuk SO aktif tidak ditampilkan.</td></tr>'}</tbody></table></div>
+  <div class="pager"><span class="small muted">${n(d.total_filtered?c.skipOffset+1:0)}–${n(Math.min((c.skipOffset||0)+50,d.total_filtered))} dari ${n(d.total_filtered)} item</span><div class="row">${btn('← Sebelumnya','cov-skip-prev','outline')}${btn('Berikutnya →','cov-skip-next','outline')}</div></div>
+  <div class="cov-skip-reason"><label for="covSkipReason"><b>Alasan barang dilewati</b></label><select id="covSkipReason" class="input select" data-change="cov-skip-reason">${opt}</select><label class="small" for="covSkipNote">Catatan tambahan (opsional, wajib untuk Alasan lain)</label><textarea id="covSkipNote" class="input" rows="2" maxlength="450" placeholder="Contoh: barang belum pernah masuk ke toko sejak buka cabang">${escapeHTML(c.skipNote||'')}</textarea></div>
+  <div class="row cov-skip-actions"><span class="small muted">Periksa pilihan Anda. Maksimal 50 item per konfirmasi.</span><button id="covSkipConfirm" class="btn primary" data-act="cov-skip-submit" ${selCount?'':'disabled'}>Konfirmasi Lewati ${n(selCount)} Item</button></div>
+ </div>`;
+}
+ACT['cov-skip-open']=async()=>{const c=state.cov;c.skipMode=true;c.skipOffset=0;c.skipSearch='';c.skipSelected=new Map();await showSkipWizard()};
+ACT['cov-skip-back']=async()=>{state.cov.skipMode=false;await showCoverage()};
+ACT['cov-skip-find']=async()=>{const c=state.cov;c.skipSearch=$('#covSkipSearch')?.value.trim()||'';c.skipOffset=0;await showSkipWizard()};
+ACT['cov-skip-prev']=async()=>{const c=state.cov;c.skipOffset=Math.max(0,(c.skipOffset||0)-50);await showSkipWizard()};
+ACT['cov-skip-next']=async()=>{const c=state.cov;if(c.skipOffset+50>=Number(c.skipData?.total_filtered||0))return;c.skipOffset+=50;await showSkipWizard()};
+CHG['cov-skip-pick']=el=>{const c=state.cov;if(el.checked){if(c.skipSelected.size>=50&&!c.skipSelected.has(el.value)){el.checked=false;toast('Maksimal 50 item per konfirmasi.',true);return;}c.skipSelected.set(el.value,el.dataset.name);}else c.skipSelected.delete(el.value);covSkipUiUpdate()};
+CHG['cov-skip-page-check']=async el=>{const c=state.cov;for(const x of c.skipData?.items||[]){if(!el.checked)c.skipSelected.delete(x.item_key);else if(c.skipSelected.has(x.item_key)||c.skipSelected.size<50)c.skipSelected.set(x.item_key,x.item_name);}await showSkipWizard()};
+ACT['cov-skip-page']=async()=>{const c=state.cov;for(const x of c.skipData?.items||[]){if(c.skipSelected.size>=50)break;c.skipSelected.set(x.item_key,x.item_name);}await showSkipWizard()};
+ACT['cov-skip-clear']=async()=>{state.cov.skipSelected.clear();await showSkipWizard()};
+CHG['cov-skip-reason']=el=>{state.cov.skipReason=el.value};
+ACT['cov-skip-submit']=async()=>{
+ const c=state.cov;
+ if(!canSkipStore())throw Error('Anda tidak memiliki akses Lewati Item.');
+ if(state.me.role==='store'&&c.store!==state.me.store_code)throw Error('Akun Store hanya boleh memproses tokonya sendiri.');
+ const items=[...(c.skipSelected?.keys()||[])];
+ if(items.length<1||items.length>50)throw Error('Pilih 1 sampai 50 item terlebih dahulu.');
+ const reasonCode=$('#covSkipReason')?.value||c.skipReason;
+ const note=($('#covSkipNote')?.value??c.skipNote??'').trim();
+ c.skipNote=note;c.skipReason=reasonCode;
+ const preset=SKIP_REASONS.find(x=>x[0]===reasonCode);
+ if(!preset)throw Error('Pilih alasan terlebih dahulu.');
+ if(reasonCode==='LAINNYA'&&note.length<8)throw Error('Alasan lain wajib ditulis, minimal 8 karakter.');
+ const reason=(reasonCode==='LAINNYA'?note:(preset[1]+(note?' — '+note:''))).slice(0,500);
+ if(reason.length<8)throw Error('Alasan minimal 8 karakter.');
+ if(!confirm(`Konfirmasi Lewati ${n(items.length)} item di ${labelStore(c.store)}?\n\n${items.slice(0,6).map(x=>'• '+(c.skipSelected.get(x)||x)).join('\n')}${items.length>6?`\n... dan ${n(items.length-6)} item lain`:''}\n\nAlasan: ${reason}\n\nTindakan ini menyelesaikan cakupan tanpa mengubah stok fisik, hasil Counting, selisih, atau BA.`))return;
+ const out=await rpc('skip_items',{p_store:c.store,p_items:items,p_reason:reason});
+ c.skipSelected.clear();c.skipNote='';c.skipOffset=0;
+ await showSkipWizard();toast(`${n(out.skipped)} item berhasil dilewati. Terhitung dalam cakupan, bukan hasil hitung fisik.`);
+};
 CHG['cov-store']=async el=>{const c=state.cov;c.store=el.value;c.offset=0;c.search='';covClearSelection();await showCoverage()};
 ACT['cov-filter']=async el=>{const c=state.cov;c.filter=el.dataset.v;c.offset=0;covClearSelection();await showCoverage()};
 ACT['cov-find']=async()=>{const c=state.cov;c.search=$('#covSearch').value.trim();c.offset=0;covClearSelection();await showCoverage()};

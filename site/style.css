@@ -1413,3 +1413,52 @@ body{-webkit-font-smoothing:antialiased}
 .cov-table .cov-diff{display:block;font-size:10.5px;line-height:1.35;color:#64748b;white-space:nowrap}
 .cov-bulk{flex-wrap:wrap}
 @media (max-width:900px){.rotation-table{min-width:750px}}
+
+/* v44: alur Lewati Barang yang mudah untuk Store dan Admin. */
+.cov-skip-entry{display:flex;justify-content:space-between;align-items:center;gap:18px;padding:18px 20px;border:1px solid #fdba74;background:#fff7ed}
+.cov-skip-entry-text{max-width:790px}
+.cov-skip-entry h3{margin:0 0 5px;font-size:17px;color:#9a3412}
+.cov-skip-entry p{margin:0 0 5px;font-size:13px;line-height:1.5;color:#374151}
+.cov-skip-entry small{font-size:11px;color:#6b7280}
+.cov-skip-entry .btn{white-space:nowrap}
+.cov-skip-wizard{max-width:1200px}
+.cov-skip-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:14px}
+.cov-skip-steps>div{border:1px solid #fed7aa;background:#fff7ed;border-radius:10px;padding:10px 12px;font-size:12.5px;font-weight:650;display:flex;align-items:center;gap:9px}
+.cov-skip-steps b{background:#f97316;color:white;border-radius:50%;width:25px;height:25px;min-width:25px;display:inline-flex;justify-content:center;align-items:center}
+.cov-skip-search{margin:14px 0;display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.cov-skip-search .grow{min-width:210px;flex:1 1 230px}
+.cov-skip-meta{display:flex;align-items:center;flex-wrap:wrap;gap:10px 20px;font-size:12px;margin-bottom:10px;color:#475569}
+#covSkipPicked{color:#9a3412}
+.cov-skip-table{width:100%;min-width:610px}
+.cov-skip-table th,.cov-skip-table td{padding:9px 12px;vertical-align:middle}
+.cov-skip-table td:nth-child(1),.cov-skip-table th:nth-child(1){width:55px;text-align:center}
+.cov-skip-table td:nth-child(2){width:55%;overflow-wrap:break-word}
+.cov-skip-reason{border-top:1px solid #e5e7eb;padding-top:14px;margin-top:12px;display:flex;flex-direction:column;gap:8px;max-width:850px}
+.cov-skip-reason select{max-width:500px}
+.cov-skip-reason textarea{width:100%;resize:vertical;box-sizing:border-box}
+.cov-skip-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:12px}
+.cov-skip-actions button:disabled{opacity:.5;cursor:not-allowed}
+@media(max-width:760px){.cov-skip-entry{flex-direction:column;align-items:stretch}.cov-skip-entry .btn{width:100%}.cov-skip-steps{grid-template-columns:1fr}.cov-skip-search .btn{flex:1 1 auto}.cov-skip-actions button{width:100%}}
+
+/* v44 - Tracking SO: filter ringkas dan daftar riwayat yang tetap terbaca. */
+.track-filter-card{margin-bottom:12px}
+.track-filter-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 14px}
+.track-filter-grid label{display:flex;flex-direction:column;gap:6px;font-size:11.5px;font-weight:750;color:#475569;min-width:0}
+.track-filter-grid .input,.track-filter-grid .select{width:100%;min-width:0;box-sizing:border-box}
+.track-readonly{padding:11px 12px;border:1px solid #e2e8f0;background:#f8fafc;border-radius:9px;color:#334155;font-size:12px}
+.track-actions{margin-top:14px;justify-content:flex-end;gap:8px}
+.track-table{width:100%;min-width:1060px;font-size:11.5px}
+.track-table th,.track-table td{padding:9px 8px;vertical-align:top;line-height:1.45}
+.track-table th{white-space:nowrap}
+.track-table .track-time{white-space:nowrap;font-variant-numeric:tabular-nums}
+.track-table .track-name{min-width:155px;max-width:270px;overflow-wrap:break-word;font-weight:700}
+.track-table .track-color{display:block;color:#64748b;font-size:10.5px;margin-top:4px}
+.track-table .chip{white-space:nowrap;font-size:10px}
+.track-details{min-width:58px;position:relative}
+.track-details summary{color:#4338ca;font-weight:750;cursor:pointer;list-style:none}
+.track-details summary::before{content:'+';margin-right:4px}
+.track-details[open] summary::before{content:'−'}
+.track-detail-box{display:grid;gap:5px;min-width:190px;max-width:280px;margin-top:10px;color:#334155;font-size:11px;line-height:1.5;overflow-wrap:anywhere}
+.track-meta{display:flex;flex-wrap:wrap;gap:5px 12px}
+@media(max-width:960px){.track-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:580px){.track-filter-grid{grid-template-columns:1fr}.track-actions .btn{flex:1}.track-table{min-width:980px}}
