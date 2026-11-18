@@ -31,7 +31,35 @@ const $$=sel=>Array.from(document.querySelectorAll(sel));
 const toast=(s,isErr=false)=>{const el=$('#toast');el.textContent=s;el.className='toast'+(isErr?' error':'');clearTimeout(el._t);el._t=setTimeout(()=>el.classList.add('hidden'),5500)};
 const busy=d=>{inflight=Math.max(0,inflight+d);const p=$('#progress');if(p)p.classList.toggle('on',inflight>0)};
 const SYNC_RPCS=new Set(['upload','start','start_cycle','submit','approve','recount','validate_edit','validate_line','schedule_create','schedule_update','schedule_delete','archive_cycles','hard_delete','unlock','ba_revalidate','ba_sign','ba_sign_bulk','ba_reason_set','ba_adjust','ba_adjust_bulk','ba_clean','assign_user','set_store_spv','set_store_area','rounds_resync','item_lock_override','item_lock_override_filter','skip_items','activate_user']);
-const rpc=async(name,args={})=>{busy(1);try{const {data,error}=await sb.rpc('tsi_so_'+name,args);if(error){if(!error.code)state.online=false;throw new Error(error.message||'Terjadi kesalahan server')}state.online=true;if(SYNC_RPCS.has(name))notifySync(name,args.p_store||null);return data}finally{busy(-1)}};
+// v45: Cache pendek HANYA untuk read-only ringkasan; bukan input, Counting, Validasi,
+// BA, Tracking, atau Cakupan. Semua cache di memori tab, tidak disimpan lintas login.
+const REPORT_CACHE_MS=30000;
+const REPORT_RPCS=new Set(['dashboard','kpi','store_analytics','accuracy_trend','rotation_dashboard']);
+const reportCache=new Map(), reportPending=new Map();
+let reportGeneration=0;
+function invalidateReportCache(){reportGeneration++;reportCache.clear();reportPending.clear()}
+async function reportRpc(name,args={}){
+ if(!REPORT_RPCS.has(name))return rpc(name,args);
+ const key=name+'|'+JSON.stringify(args);
+ const hit=reportCache.get(key);
+ if(hit&&Date.now()-hit.at<REPORT_CACHE_MS)return hit.data;
+ if(reportPending.has(key))return reportPending.get(key);
+ const generation=reportGeneration;
+ const req=rpc(name,args).then(data=>{
+  if(generation===reportGeneration)reportCache.set(key,{at:Date.now(),data});
+  return data;
+ }).finally(()=>{if(reportPending.get(key)===req)reportPending.delete(key)});
+ reportPending.set(key,req);
+ return req;
+}
+const rpc=async(name,args={})=>{busy(1);try{
+ const {data,error}=await sb.rpc('tsi_so_'+name,args);
+ if(error){if(!error.code)state.online=false;const ex=new Error(error.message||'Terjadi kesalahan server');ex.code=error.code||'';throw ex}
+ state.online=true;
+ if(SYNC_RPCS.has(name)){invalidateReportCache();notifySync(name,args.p_store||null)}
+ else if(name==='save_counts'||name==='save_row_with_status')invalidateReportCache();
+ return data;
+}finally{busy(-1)}};
 const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 const isoUTC=d=>d.toISOString().slice(0,10);
 state.dash.range=newRange();state.sch.range=newRange();state.exp.range=newRange();
@@ -254,6 +282,7 @@ function shell(){
 }
 // Refresh: bersihkan cache di memori, muat ulang profil, toko, dan dashboard dari server
 async function softRefresh(){
+ invalidateReportCache();
  state.builder=null;
  if(state.validation)state.validation.data=null;
  if(state.cov)state.cov.data=null;
@@ -264,7 +293,7 @@ async function softRefresh(){
 }
 ACT['refresh']=async()=>{try{await softRefresh();await render();toast('Data diperbarui dari server')}catch(ex){toast(ex.message,true)}};
 ACT['app-reset']=()=>{location.reload()};
-ACT['logout']=async()=>{stopPresence();stopSync();await sb.auth.signOut();loginView()};
+ACT['logout']=async()=>{stopPresence();stopSync();leaveCountChannel();invalidateReportCache();await sb.auth.signOut();state.me=null;loginView()};
 function updateNav(){const el=$('#nav');if(!el)return;let last='',html='';const b=state.badges;
  for(const [id,title,icon,section] of menu()){
   if(section!==last){html+=`<div class="nav-sec">${section}</div>`;last=section}
@@ -297,9 +326,9 @@ async function render(){
  const pill=$('#sysPill');if(pill){pill.classList.toggle('off',!state.online);pill.lastChild.textContent=state.online?'System Online':'Koneksi terputus'}
  updatePresence();
 }
-async function loadBadges(){try{const k=await rpc('kpi',{});state.badges={schedule:k.so_scheduled+k.so_running,count:k.so_running+k.so_scheduled,validation:k.so_submitted}}catch(e){state.badges={}}}
+async function loadBadges(){try{const k=await reportRpc('kpi',{});state.badges={schedule:k.so_scheduled+k.so_running,count:k.so_running+k.so_scheduled,validation:k.so_submitted}}catch(e){state.badges={}}}
 function storeOptions(sel,all){return `${all?'<option value="">Semua Store</option>':''}${state.stores.map(s=>`<option value="${escapeHTML(s.code)}" ${s.code===sel?'selected':''}>${escapeHTML(s.name)}</option>`).join('')}`}
-async function refreshDashboard(){const res=await rpc('dashboard');state.dashboard=res.stores||[]}
+async function refreshDashboard(){const res=await reportRpc('dashboard');state.dashboard=res.stores||[]}
 
 /* ---------- Tracking SO: dapat dibuka Store (hanya tokonya), SPV (toko binaan), Admin (semua toko) ---------- */
 const TRACK_MONTHS=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
@@ -456,15 +485,15 @@ async function showDashboard(){
  d.bucket=spanDays==null?'month':spanDays<=31?'day':spanDays<=180?'week':spanDays<=730?'month':'year';
  const wantChart=d.tab==='chart';
  const [kpiRpc,analytics,trend]=await Promise.all([
-  rpc('kpi',{p_store:d.store||null,p_type:d.type||null,p_from:from,p_to:to}),
-  rpc('store_analytics',{p_type:d.type||null,p_from:from,p_to:to}),
-  wantChart?rpc('accuracy_trend',{p_type:d.type||null,p_from:from,p_to:to,p_bucket:d.bucket}):Promise.resolve([])]);
+  reportRpc('kpi',{p_store:d.store||null,p_type:d.type||null,p_from:from,p_to:to}),
+  reportRpc('store_analytics',{p_type:d.type||null,p_from:from,p_to:to}),
+  wantChart?reportRpc('accuracy_trend',{p_type:d.type||null,p_from:from,p_to:to,p_bucket:d.bucket}):Promise.resolve([])]);
  const spvs=[...new Set(analytics.flatMap(spvOf).filter(Boolean))].sort((x,y)=>x.localeCompare(y));
  if(d.spv&&!spvs.includes(d.spv))d.spv='';
  const bySpv=r=>!d.spv||spvOf(r).includes(d.spv);
  if(d.store&&!analytics.some(r=>r.code===d.store&&bySpv(r)))d.store='';
  const rows=analytics.filter(r=>bySpv(r)&&(!d.store||r.code===d.store));
- const rotation=d.tab==='kpi'?await rpc('rotation_dashboard'):[];
+ const rotation=d.tab==='kpi'?await reportRpc('rotation_dashboard'):[];
  const codes=new Set(rows.map(r=>r.code));
  const cards=state.dashboard.filter(s=>codes.has(s.code));
  // KPI: tanpa filter memakai RPC kpi; dengan filter SPV/toko dijumlahkan dari baris toko terpilih.
@@ -1127,7 +1156,7 @@ async function loadCount(cid){
  const sch=(state.count.cycles||[]).find(r=>r.id===id);
  if(sch?.status==='SCHEDULED')return countStart(schedArg(sch));
  const q=state.count;
- const data=await rpc('count_page',{p_cycle:id,p_offset:q.offset,p_limit:50,p_search:q.search,p_filter:q.filter,p_team:q.team||null});q.data=data;joinCountChannel(id);
+ const data=await rpc('count_page',{p_cycle:id,p_offset:q.offset,p_limit:50,p_search:q.search,p_filter:q.filter,p_team:q.team||null});q.data=data;countLastFetchedAt=Date.now();joinCountChannel(id);
  const edit=data.status==='COUNTING'||data.status==='RECOUNT';
  const keepUp=$('#upPanel');
  const back=state.me.role!=='store'?`<div class="crumb"><button class="btn ghost" data-act="count-back">← Daftar SO</button><span class="muted small">${escapeHTML(labelStore(state.store))}</span></div>`:'';
@@ -1193,15 +1222,30 @@ function paintRow(tr,status,total,reason){
  const sc=tr.querySelector('.st-cell');if(sc)sc.innerHTML=statusCell(status,reason);
  tr.querySelector('.noteval').classList.toggle('needs-reason',status==='SELISIH'&&!String(reason||'').trim());
 }
-// Simpan satu baris lalu minta status-nya dari server (system tetap tidak dikirim ke Store)
+// Simpan 1 baris (v45: RPC gabungan; system qty tidak dikirim ke Store)
+let combinedSaveAvailable=true;
 async function saveRow(tr){
  const d=state.count.data;if(!d||!(d.status==='COUNTING'||d.status==='RECOUNT'))return;
  const row=rowVals(tr,{blankZero:true});
  tr.classList.add('row-saving');
  try{
-  await rpc('save_counts',{p_cycle:d.cycle_id,p_rows:[{sku:row.sku,display:row.display,reject:row.reject,rak_utama:row.rak_utama,rak_cadangan:row.rak_cadangan,reason:row.reason}]});
+  const payload={sku:row.sku,display:row.display,reject:row.reject,rak_utama:row.rak_utama,rak_cadangan:row.rak_cadangan,reason:row.reason};
+  let st;
+  // Satu request dan satu transaksi di SQL 043; jika belum terpasang, alur v44
+  // tetap berjalan dengan save_counts + row_status agar autosave tidak hilang.
+  if(combinedSaveAvailable){
+   try{st=await rpc('save_row_with_status',{p_cycle:d.cycle_id,p_row:payload})}
+   catch(ex){
+    if(ex.code!=='PGRST202'&&!/could not find the function|function .*save_row_with_status.*does not exist/i.test(ex.message))throw ex;
+    combinedSaveAvailable=false;
+    console.warn('RPC v45 belum tersedia; memakai mekanisme simpan v44. Jalankan SQL 043.');
+   }
+  }
+  if(!st){
+   await rpc('save_counts',{p_cycle:d.cycle_id,p_rows:[payload]});
+   st=await rpc('row_status',{p_cycle:d.cycle_id,p_sku:row.sku});
+  }
   clearCountDraft(d.cycle_id,[row.sku]);
-  const st=await rpc('row_status',{p_cycle:d.cycle_id,p_sku:row.sku});
   // Kolom kosong sudah tersimpan sebagai 0: tampilkan 0 agar jelas.
   POS.forEach(([k])=>{const inp=tr.querySelector(`[data-pos="${k}"]`);if(inp&&inp.value===''&&document.activeElement!==inp)inp.value='0'});
   paintRow(tr,st.status,st.total,row.reason);
@@ -1209,7 +1253,7 @@ async function saveRow(tr){
  }finally{tr.classList.remove('row-saving')}
 }
 /* ---------- Realtime SO Counting: perubahan qty dari akun/perangkat lain langsung tampil ---------- */
-let countCh=null,countChCid=null,countPoll=null;
+let countCh=null,countChCid=null,countPoll=null,countRefreshPending=false,countLastFetchedAt=0;
 const isTypingCount=()=>{const a=document.activeElement;return !!(a&&a.closest&&a.closest('#countTable'))};
 function joinCountChannel(cid){
  if(!cid||(countChCid===cid&&countCh))return;
@@ -1220,14 +1264,26 @@ function joinCountChannel(cid){
    .on('broadcast',{event:'row'},({payload})=>applyRemoteRow(payload))
    .subscribe();
  }catch(e){countCh=null}
- // cadangan: muat ulang halaman tiap 15 detik bila tidak sedang diketik
- countPoll=setInterval(()=>{if(state.page==='count'&&!isTypingCount())loadCount().catch(()=>{})},15000);
+ // Realtime broadcast tetap utama. Fallback polling 60 detik hanya saat tab aktif.
+ // Hindari refresh saat input sedang diedit, tab di-background, atau request menumpuk.
+ countPoll=setInterval(()=>{
+  if(state.page!=='count'||document.visibilityState==='hidden'||isTypingCount()||countRefreshPending)return;
+  countRefreshPending=true;
+  loadCount().catch(()=>{}).finally(()=>{countRefreshPending=false});
+ },60000);
 }
 function leaveCountChannel(){
+ countRefreshPending=false;
  if(countPoll){clearInterval(countPoll);countPoll=null}
  if(countCh){try{sb.removeChannel(countCh)}catch(e){}countCh=null}
  countChCid=null;
 }
+document.addEventListener('visibilitychange',()=>{
+ if(document.visibilityState!=='visible'||state.page!=='count'||!countChCid)return;
+ if(isTypingCount()||countRefreshPending||Date.now()-countLastFetchedAt<60000)return;
+ countRefreshPending=true;
+ loadCount().catch(()=>{}).finally(()=>{countRefreshPending=false});
+});
 function applyRemoteRow(p){
  const tbl=$('#countTable');if(!tbl||!p?.sku)return;
  const tr=[...tbl.querySelectorAll('tr[data-sku]')].find(x=>x.dataset.sku===p.sku);if(!tr)return;
@@ -1466,7 +1522,7 @@ function drawValRows(){
  body.innerHTML=monthFolders('val',rows,r=>mfKeyDate(r.planned_date),g=>`<div class="tablewrap"><table><thead><tr><th></th><th>SO</th><th>Store</th><th>Tanggal</th><th>PIC</th><th>Status</th><th class="num">Item</th><th class="num">Akurasi Item</th><th>Action</th></tr></thead><tbody>${g.map(valRowHTML).join('')}</tbody></table></div>`,g=>`${n(g.length)} SO`)||'<div class="empty">Belum ada SO yang menunggu validasi.</div>';
 }
 CHG['v-status']=el=>{state.validation.status=el.value;drawValRows()};
-ACT['val-open']=async el=>{state.page='validation';const v=state.validation;v.cycle=el.dataset.id;v.open=true;v.offset=0;v.search='';v.filter='VARIANCE';state.store=el.dataset.store||state.store;await render()};
+ACT['val-open']=async el=>{if(!canManage())throw Error('Validasi hanya untuk SPV/Admin.');state.page='validation';const v=state.validation;v.cycle=el.dataset.id;v.open=true;v.offset=0;v.search='';v.filter='VARIANCE';state.store=el.dataset.store||state.store;await render()};
 ACT['val-back']=async()=>{state.validation.open=false;state.validation.data=null;await render()};
 // Export CSV draft dari Validasi: SO yang masih SUBMITTED (belum approved). Tidak menandai SO sebagai sudah diexport.
 const valSelItems=()=>{const v=state.validation;const items=v.rows.filter(r=>v.sel.has(r.id)&&r.status==='SUBMITTED').map(exportItem);if(!items.length)throw Error('Pilih minimal satu SO yang sedang validasi.');return items};
@@ -1476,6 +1532,7 @@ ACT['val-sel-none']=()=>{state.validation.sel=new Set();drawValRows()};
 CHG['val-chk']=el=>{const v=state.validation;v.sel=v.sel||new Set();el.checked?v.sel.add(el.value):v.sel.delete(el.value);updateValSelCount()};
 ACT['val-csv-sel']=async()=>{const items=valSelItems();const k=await exportCombined(items,{draft:true});toast(`CSV draft diunduh: ${n(items.length)} SO, ${n(k)} baris.`)};
 async function loadValidation(){
+ if(!canManage())throw Error('Validasi hanya untuk SPV/Admin.');
  const v=state.validation;
  const data=await rpc('validation_page',{p_cycle:v.cycle,p_offset:v.offset,p_limit:50,p_search:v.search,p_filter:v.filter});v.data=data;
  const st=data.status,sum=data.summary||{};
@@ -2063,6 +2120,7 @@ function notifySync(kind,store){
  try{const r=syncCh.send({type:'broadcast',event:'changed',payload:{kind,store,at:Date.now()}});if(r&&r.catch)r.catch(()=>{})}catch(e){}
 }
 function onRemoteChanged(){
+ invalidateReportCache();
  clearTimeout(syncTimer);
  syncTimer=setTimeout(refreshFromRemote,400);
 }

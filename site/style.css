@@ -1462,3 +1462,49 @@ body{-webkit-font-smoothing:antialiased}
 .track-meta{display:flex;flex-wrap:wrap;gap:5px 12px}
 @media(max-width:960px){.track-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:580px){.track-filter-grid{grid-template-columns:1fr}.track-actions .btn{flex:1}.track-table{min-width:980px}}
+
+/* v45: SO Schedule - kartu warna lebih kecil, rapat, tetap terbaca.
+   Dibatasi pada #builder agar kartu/menu lain tidak berubah. */
+#builder .color-panel{padding:8px;border-radius:10px}
+#builder .cp-head{gap:6px;margin-bottom:6px;font-size:11.5px}
+#builder .cp-actions{gap:8px}
+#builder .cp-actions .link-btn{font-size:11px}
+#builder .crow-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(min(100%,178px),1fr));
+  gap:6px;
+  max-height:390px;
+  overflow-y:auto;
+  overflow-x:hidden;
+  align-items:stretch;
+  padding:2px;
+}
+#builder .crow{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  min-height:71px;
+  padding:7px 8px;
+  border-radius:9px;
+  line-height:1.18;
+  overflow-wrap:break-word;
+}
+#builder .crow-top{gap:6px;align-items:flex-start}
+#builder .crow-top input{width:14px;height:14px;min-width:14px;margin-top:0}
+#builder .crow .cname{font-size:11.5px;line-height:1.2;letter-spacing:0}
+#builder .crow-bot{gap:2px;margin-top:0;justify-content:flex-start}
+#builder .crow-bot small,#builder .crow-bot em{font-size:9.6px;line-height:1.18}
+#builder .crow-bot .crow-review{font-size:9.3px;line-height:1.2}
+@media(max-width:740px){
+  #builder .crow-grid{grid-template-columns:repeat(auto-fill,minmax(min(100%,154px),1fr));max-height:340px;gap:5px}
+  #builder .crow{min-height:67px;padding:6px 7px;gap:3px}
+  #builder .crow .cname{font-size:11px}
+  #builder .crow-bot small,#builder .crow-bot em{font-size:9.3px}
+}
+@media(max-width:380px){
+  #builder .crow-grid{grid-template-columns:repeat(auto-fill,minmax(min(100%,133px),1fr));gap:5px}
+  #builder .crow .cname{font-size:10.8px}
+}
+#builder .crow.dk .crow-bot small,#builder .crow.dk .crow-bot em{color:#f1f5f9}
+#builder .crow.crow-locked{opacity:.78}
+#builder .crow:focus-within{outline:2px solid #ea580c;outline-offset:1px}
