@@ -11,7 +11,6 @@ const state={me:null,stores:[],dashboard:[],page:'dashboard',store:'',online:tru
  exp:{store:'',range:null,rows:[],sel:new Set()},
  count:{offset:0,search:'',filter:'ALL',team:'',data:null,open:false,sel:new Set(),listQ:'',rows:[]},
  validation:{offset:0,search:'',filter:'VARIANCE',status:'ALL',data:null,open:false,cycle:'',listQ:'',rows:[]},
- tracking:{store:'',filter:'ALL',search:'',offset:0,item:null,from:'',to:'',historyOffset:0,epoch:0,data:null,detail:null},
  builder:null,cov:{store:'',filter:'ALL',search:'',offset:0,data:null,selectMode:'MANUAL',sel:new Set()}};
 let upRows=[];
 let upCheck=null;
@@ -30,7 +29,7 @@ const $=sel=>document.querySelector(sel);
 const $$=sel=>Array.from(document.querySelectorAll(sel));
 const toast=(s,isErr=false)=>{const el=$('#toast');el.textContent=s;el.className='toast'+(isErr?' error':'');clearTimeout(el._t);el._t=setTimeout(()=>el.classList.add('hidden'),5500)};
 const busy=d=>{inflight=Math.max(0,inflight+d);const p=$('#progress');if(p)p.classList.toggle('on',inflight>0)};
-const SYNC_RPCS=new Set(['upload','start','start_cycle','submit','approve','recount','validate_edit','validate_line','schedule_create','schedule_update','schedule_delete','archive_cycles','hard_delete','unlock','ba_revalidate','ba_sign','ba_sign_bulk','ba_reason_set','ba_adjust','ba_adjust_bulk','ba_clean','assign_user','set_store_spv','set_store_area','rounds_resync','item_lock_override','item_lock_override_filter','activate_user']);
+const SYNC_RPCS=new Set(['upload','start','start_cycle','submit','approve','recount','validate_edit','validate_line','schedule_create','schedule_update','schedule_delete','archive_cycles','hard_delete','unlock','ba_revalidate','ba_sign','ba_sign_bulk','ba_reason_set','ba_adjust','ba_adjust_bulk','ba_clean','assign_user','set_store_spv','set_store_area','rounds_resync','item_lock_override','item_lock_override_filter','skip_items','activate_user']);
 const rpc=async(name,args={})=>{busy(1);try{const {data,error}=await sb.rpc('tsi_so_'+name,args);if(error){if(!error.code)state.online=false;throw new Error(error.message||'Terjadi kesalahan server')}state.online=true;if(SYNC_RPCS.has(name))notifySync(name,args.p_store||null);return data}finally{busy(-1)}};
 const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 const isoUTC=d=>d.toISOString().slice(0,10);
@@ -216,8 +215,7 @@ const PAGE={
  dashboard:['Dashboard','Ringkasan operasional Stock Opname'],
  schedule:['SO Schedule','Jadwal Partial dan Grand Stock Opname per toko'],
  count:['SO Counting','Hitung stok per posisi di desktop, tablet, atau smartphone'],
- tracking:['Tracking SO','Cari riwayat dan sumber penguncian per item dan toko'],
- coverage:['Cakupan Item','Setiap item wajib ter-SO sebelum boleh di-SO lagi dalam periode ini'],
+ coverage:['Cakupan Item','Bukti fisik dan penyelesaian cakupan (termasuk Lewati barang tidak tersedia)'],
  validation:['Validasi SPV','Review hasil counting toko, validasi selisih, lalu approve SO'],
  export:['Export & Pembersihan','Export hasil SO APPROVED ke CSV, lalu bersihkan detail dari database'],
  upload:['Upload Inventory','Ganti inventory aktif toko. System qty SO yang berjalan ikut diperbarui sampai SUBMITTED'],
@@ -229,7 +227,6 @@ function menu(){const p=state.me.role;return [
  ['schedule','SO Schedule','▦','STOCK OPNAME'],
  ['count','Counting','☑','STOCK OPNAME'],
  ['coverage','Cakupan Item','◎','STOCK OPNAME'],
- ['tracking','Tracking SO','⌕','STOCK OPNAME'],
  ...(p!=='store'?[['validation','Validasi SPV','✓','STOCK OPNAME']]:[]),
  ...(p!=='store'?[['ba','Berita Acara','§','STOCK OPNAME']]:[]),
  ...(p!=='store'?[['export','Export & Pembersihan','⤓','REPORT & SETTINGS']]:[]),
@@ -271,7 +268,7 @@ function updateNav(){const el=$('#nav');if(!el)return;let last='',html='';const 
  }
  el.innerHTML=html;
  paintNavPresence();
- el.querySelectorAll('[data-page]').forEach(b2=>b2.onclick=async()=>{state.page=b2.dataset.page;if(state.tracking){state.tracking.epoch++;if(state.page==='tracking')state.tracking.item=null;}state.validation.open=false;if(state.ba)state.ba.open=null;state.count.open=false;state.count.sel=new Set();await render()});
+ el.querySelectorAll('[data-page]').forEach(b2=>b2.onclick=async()=>{state.page=b2.dataset.page;state.validation.open=false;if(state.ba)state.ba.open=null;state.count.open=false;state.count.sel=new Set();await render()});
 }
 const loadingHTML=(t='Memuat data…')=>`<div class="card loading-card"><span class="spinner"></span>${t}</div>`;
 async function render(){
@@ -285,7 +282,6 @@ async function render(){
   if(state.page==='schedule')await showSchedule();
   if(state.page==='count')await showCount();
   if(state.page==='coverage')await showCoverage();
-  if(state.page==='tracking')await showTracking();
   if(state.page==='validation')await showValidation();
   if(state.page==='ba')await showBA();
   if(state.page==='export')await showExport();
@@ -399,6 +395,7 @@ async function showDashboard(){
  const bySpv=r=>!d.spv||spvOf(r).includes(d.spv);
  if(d.store&&!analytics.some(r=>r.code===d.store&&bySpv(r)))d.store='';
  const rows=analytics.filter(r=>bySpv(r)&&(!d.store||r.code===d.store));
+ const rotation=d.tab==='kpi'?await rpc('rotation_dashboard'):[];
  const codes=new Set(rows.map(r=>r.code));
  const cards=state.dashboard.filter(s=>codes.has(s.code));
  // KPI: tanpa filter memakai RPC kpi; dengan filter SPV/toko dijumlahkan dari baris toko terpilih.
@@ -431,7 +428,12 @@ async function showDashboard(){
    ${vol('a','Overdue',n(k.so_overdue),'SO terjadwal yang sudah lewat tanggal')}
   </div>
   <div class="sec-title">Ringkasan Toko <small>Progress SO berjalan per toko (status terkini)</small></div>
-  <div class="store-grid" ${gridStyle(cards.length)}>${cards.length?cards.map(storeCard).join(''):'<div class="empty">Belum ada toko untuk filter ini.</div>'}</div>`;
+  <div class="store-grid" ${gridStyle(cards.length)}>${cards.length?cards.map(storeCard).join(''):'<div class="empty">Belum ada toko untuk filter ini.</div>'}</div>
+  <div class="sec-title">Perputaran SO per Item & Toko <small>Riwayat hasil fisik SO APPROVED yang masih memiliki detail; tidak menghitung jadwal dan item dilewati.</small></div>
+  <div class="tablewrap"><table class="rotation-table fit"><thead><tr><th>Toko</th><th class="num">SO Approved</th><th>SO terakhir</th><th class="num">Hari sejak SO</th><th class="num">Rata-rata jarak SO item</th><th class="num">Pengulangan item</th></tr></thead><tbody>
+    ${rotation.filter(x=>codes.has(x.store_code)).map(x=>`<tr><td><b>${escapeHTML(x.store_name)}</b></td><td class="num">${n(x.approved_so)}</td><td>${x.last_so_date?fmtDate(x.last_so_date):'—'}</td><td class="num">${x.days_since_last===null?'—':n(x.days_since_last)+' hari'}</td><td class="num"><b>${x.avg_item_days===null?'—':n(x.avg_item_days)+' hari'}</b></td><td class="num">${n(x.repeat_events)}</td></tr>`).join('')||'<tr><td colspan="6" class="empty">Belum ada data SO disetujui.</td></tr>'}
+  </tbody></table></div>
+  <p class="footerhint">Rata-rata perputaran dihitung dari jarak tanggal antar-SO untuk item yang sama. Nilai — berarti belum ada dua penghitungan fisik yang bisa dibandingkan. Data SO lama yang sudah dibersihkan tidak tersedia untuk perhitungan jarak item.</p>`;
  }
  if(d.tab==='chart'){
   body=chartTabHTML(d,rows,trend);
@@ -695,7 +697,7 @@ async function ensureStats(b,cats){
    if(b.store!==store||b.stats!==stats)return;
    try{
     const response=await rpc('color_stats',{p_store:store,p_category:c});
-    if(response.length&&response[0].version!==40)throw Error('Perbarui SQL 037 agar status warna dan item akurat.');
+    if(response.length&&response[0].version<40)throw Error('Perbarui SQL 037 agar status warna dan item akurat.');
     const list=response.slice().sort((x,y)=>y.sku_count-x.sku_count||x.color.localeCompare(y.color));
     if(b.store===store&&b.stats===stats){stats.set(c,list);b.statsErrors?.delete(c)}
    }catch(ex){
@@ -732,7 +734,7 @@ function colorPanelHTML(owner,cat,set,list){
    const style=dk?`background:${hex};border-color:${hex}`:`background:linear-gradient(90deg,${hex}40,${hex}14);border-color:${hex}88`;
    const historyReview=Number(x.history_review_count??0),ratioGap=Number(x.ratio_gap_count??0);
    const note=(historyReview?`<span class="crow-review" title="Riwayat terarsip/belum dapat diverifikasi: audit sebelum mengubah rasio">Perlu verifikasi: ${n(historyReview)}</span>`:'')+(ratioGap?`<span class="crow-review crow-reconciled" title="Rasio tampil dikoreksi secara logis dari detail SO yang lengkap; data historis tidak diubah">Rekonsiliasi: ${n(ratioGap)}</span>`:'');
-   return `<label class="crow ${checked?'on':''} ${dk?'dk':''} ${canSelect?'':'crow-locked'}" style="${style}"><span class="crow-top"><input type="checkbox" data-change="b-color" data-owner="${escapeHTML(owner)}" data-cat="${escapeHTML(cat)}" value="${escapeHTML(x.color)}" ${checked?'checked':''} ${canSelect?'':'disabled'} /><span class="cname">${escapeHTML(x.color)}</span></span><span class="crow-bot"><small>${n(elig)} bisa di-SO${locked>0?` · ${n(locked)} terkunci`:''}</small><em>${n(x.belum_count??0)} rasio 0x · ${n(x.sudah_count??0)} rasio &gt;0x</em>${note}</span></label>`
+   return `<label class="crow ${checked?'on':''} ${dk?'dk':''} ${canSelect?'':'crow-locked'}" style="${style}"><span class="crow-top"><input type="checkbox" data-change="b-color" data-owner="${escapeHTML(owner)}" data-cat="${escapeHTML(cat)}" value="${escapeHTML(x.color)}" ${checked?'checked':''} ${canSelect?'':'disabled'} /><span class="cname">${escapeHTML(x.color)}</span></span><span class="crow-bot"><small>${n(elig)} bisa di-SO${locked>0?` · ${n(locked)} terkunci`:''}</small><em>${n(x.belum_count??0)} belum hitung fisik · ${n(x.sudah_count??0)} pernah SO${Number(x.skipped_count??0)>0?` · ${n(x.skipped_count)} dilewati`:''}</em>${note}</span></label>`
  }).join('')}</div></div>`;
 }
 function catBlockHTML(b,owner,cat,scope){
@@ -848,7 +850,7 @@ ACT['b-sku-del']=async el=>{const b=state.builder;if(!b)return;b.scope.skus.dele
 CHG['b-search']=async el=>{
  const b=state.builder;if(!b)return;b.skuQ=el.value.trim();
  const d=await rpc('sku_coverage',{p_store:b.store,p_filter:'ALL',p_search:b.skuQ,p_offset:0,p_limit:50});
- if(d.version!==40)throw Error('Jalankan SQL 037 terlebih dahulu sebelum menggunakan pemilihan item.');
+ if(d.version<40)throw Error('Migrasi pemilihan item belum aktif.');
  const box=$('#bSkuList');if(!box||state.builder!==b)return;
  box.innerHTML=(d.items||[]).map(x=>{const sel=b.scope.skus.has(x.sku);const dis=!x.eligible&&!sel;
    return `<label class="sku-row ${dis?'locked':''}"><input type="checkbox" data-change="b-sku" value="${escapeHTML(x.sku)}" ${sel?'checked':''} ${dis?'disabled':''}/><span class="sku-name-pick">${escapeHTML(x.name)}</span><span class="ratio ${x.ratio?'r1':'r0'}">${n(x.ratio)}x</span><em>${dis?'Terkunci':'Bisa'}</em></label>`}).join('')||'<div class="empty small">Tidak ada item yang cocok.</div>';
@@ -1695,12 +1697,12 @@ async function showCoverage(){
  else if(!c.store)c.store=state.store||state.stores[0]?.code||'';
  c.sel=c.sel||new Set();c.selectMode=c.selectMode||'MANUAL';
  const d=await rpc('sku_coverage',{p_store:c.store,p_filter:c.filter,p_search:c.search,p_offset:c.offset,p_limit:50});
- if(d.version!==40)throw Error('SQL 037 belum aktif. Terapkan migrasi v40 sebelum membuka Cakupan Item.');
+ if(d.version!==43)throw Error('Jalankan SQL migrasi 040 (v43) sebelum memakai Cakupan Item dan fitur Lewati.');
  c.data=d;
  if(c.selectMode==='PAGE')c.sel=new Set((d.items||[]).map(x=>x.sku));
- const s2=d.summary||{};const pct=s2.total?Math.round(100*s2.sudah/s2.total):0;
+ const s2=d.summary||{};const pct=s2.total?Math.round(100*s2.selesai_cakupan/s2.total):0;
  const mini=(cls,l,val,sub)=>`<div class="mini ${cls}"><small>${l}</small><b>${val}</b><span>${sub}</span></div>`;
- const filters=[['ALL','Semua'],['BELUM','Belum di-SO'],['SUDAH','Sudah di-SO'],['DIPILIH','Bisa dipilih'],['TERKUNCI','Terkunci'],['REVIEW','Perlu verifikasi'],['KOREKSI','Rekonsiliasi'],['DIBUKA','Dibuka Master']];
+ const filters=[['ALL','Semua'],['BELUM','Belum dihitung'],['SUDAH','Sudah dihitung'],['DILEWATI','Dilewati'],['DIPILIH','Bisa dipilih'],['TERKUNCI','Terkunci'],['REVIEW','Perlu verifikasi'],['KOREKSI','Rekonsiliasi'],['DIBUKA','Dibuka Master']];
  const mode=c.selectMode;
  $('#content').innerHTML=`${isAdmin()?`<div class="card"><div class="card-head"><h3>Audit Rasio SO</h3><span class="muted small">Periksa sebelum sinkronisasi; histori arsip tidak boleh dihapus</span></div><div class="row">${btn('Cek Rasio','cov-sync-check','outline')}${btn('Sinkronkan (hanya jika aman)','cov-sync-apply','outline')}</div><div id="covSync" class="note info small">Untuk item dengan detail SO historis yang tidak lengkap, gunakan Buka Kunci Master. Rasio aslinya tetap disimpan.</div></div>`:''}
  <div class="card filter-card"><div class="filters">
@@ -1708,14 +1710,17 @@ async function showCoverage(){
    <input id="covSearch" class="input grow" placeholder="Cari nama item" value="${escapeHTML(c.search)}"/>
    ${btn('Cari','cov-find','outline')}${rstHTML('cov')}
   </div>
-  <div class="note info">Kelayakan memakai bukti detail SO ketika lengkap. Jika histori terarsip atau sudah dibersihkan, sistem menandai <b>Perlu verifikasi</b> dan tidak mereset rasio otomatis. Semua toko dan pemilihan jadwal memakai sumber kelayakan yang sama.</div></div>
+  <div class="note info">Cakupan dipisahkan antara item dihitung fisik dan item dilewati (stok sistem harus 0). Jika histori terarsip atau sudah dibersihkan, sistem menandai <b>Perlu verifikasi</b> dan tidak mereset rasio otomatis. Semua toko dan pemilihan jadwal memakai sumber kelayakan yang sama.</div></div>
  <div class="mini-row">
    ${mini('','Total Item',n(s2.total),'Seluruh item toko')}
-   ${mini('g','Tercatat pernah SO',n(s2.sudah),pct+'% dari total')}
-   ${mini('a','Belum tercatat SO',n(s2.belum),'Belum SO · bisa dipilih')}
+   ${mini('g','Rasio dari SO',n(s2.sudah),'Termasuk SO arsip; tidak sama dengan bukti fisik tersedia')}
+   ${mini('a','Belum dihitung fisik',n(s2.belum),'Termasuk item yang dilewati')}
+   ${mini('o','Dilewati (cakupan)',n(s2.dilewati),'Barang tidak ada · bukan hasil fisik')}
+   ${mini('g','Cakupan selesai',n(s2.selesai_cakupan),pct+'% termasuk Lewati')}
    ${mini('o','Bisa dipilih',n(s2.dipilih),'Termasuk izin Master')}
    ${mini('r','Terkunci',n(s2.terkunci),'Ikuti rasio/riwayat')}
    ${mini('o','Perlu Verifikasi',n(s2.review),'Data historis tidak lengkap')}
+   ${mini('a','Rasio tanpa detail fisik',n(s2.tanpa_detail_fisik),'Periksa arsip / bukti SO')}
    ${mini('a','Rekonsiliasi Logis',n(s2.koreksi),'Detail tersedia; rasio asli tetap')}
    ${mini('g','Dibuka Master',n(s2.dibuka),'Izin sekali pakai aktif')}
  </div>
@@ -1731,11 +1736,12 @@ async function showCoverage(){
    ${btn('Kosongkan pilihan','cov-selection-clear','outline')}
    <b id="covSelCount">${n(covSelectedCount())} item ${mode==='FILTER'?'sesuai filter':'dipilih'}</b>
    ${btn('Buka Kunci Pilihan','cov-unlock-selected','primary')}
+   ${btn('Lewati Pilihan (stok 0)','cov-skip-selected','outline')}
    ${btn('Cabut Izin Pilihan','cov-lock-selected','outline')}
    <span class="small muted">Pilihan hasil filter diproses di database hanya untuk toko dan filter yang sedang aktif. Konfirmasi wajib sebelum tindakan.</span>
   </div>`:''}
   <div class="tablewrap" style="margin-top:10px"><table class="cov-table"><thead><tr>${isAdmin()?`<th><input type="checkbox" data-change="cov-pick-page" ${mode==='FILTER'?'disabled checked':((d.items||[]).length>0&&(d.items||[]).every(x=>c.sel.has(x.sku)))?'checked':''} aria-label="Pilih semua item pada halaman"/></th>`:''}<th>Item &amp; Warna</th><th class="num">Rasio</th><th>Status Riwayat</th><th>Status Pemilihan</th>${isAdmin()?'<th>Aksi Master</th>':''}</tr></thead><tbody>
-  ${(d.items||[]).map(x=>`<tr>${isAdmin()?`<td><input type="checkbox" data-change="cov-pick" value="${escapeHTML(x.sku)}" ${(mode==='FILTER'||c.sel.has(x.sku))?'checked':''} ${mode==='FILTER'?'disabled':''} aria-label="Pilih ${escapeHTML(x.name)}"/></td>`:''}<td class="nm">${nameBadge(x.name,x.category)}<div class="track-link">${btn('Tracking SO','cov-track','outline',{item:x.sku})}</div></td><td class="num"><span class="ratio ${x.ratio?'r1':'r0'}">${n(x.ratio)}x</span>${x.history_status==='KOREKSI_LOGIS'?`<small class="cov-diff">Data: ${n(x.stored_ratio)}x</small>`:''}</td><td>${x.history_status==='PERLU_VERIFIKASI'?'<span class="chip orange"><i></i>Perlu verifikasi</span>':x.history_status==='KOREKSI_LOGIS'?'<span class="chip blue"><i></i>Rekonsiliasi</span>':x.status==='SUDAH'?chip('TALLY','TERCATAT DALAM SO'):chip('BELUM','BELUM SO')}</td><td>${x.unlocked?'<span class="chip green"><i></i>Dibuka Master</span>':x.eligible?'<span class="chip blue"><i></i>Bisa dipilih</span>':'<span class="chip red"><i></i>Terkunci</span>'}</td>${isAdmin()?`<td>${x.unlocked?btn('Cabut','cov-lock','outline',{sku:x.sku}):!x.eligible?btn('Buka Kunci','cov-unlock','outline',{sku:x.sku}):'<span class="muted small">Tidak perlu</span>'}</td>`:''}</tr>`).join('')||`<tr><td colspan="${isAdmin()?6:4}" class="empty">Tidak ada item pada filter ini.</td></tr>`}
+  ${(d.items||[]).map(x=>`<tr>${isAdmin()?`<td><input type="checkbox" data-change="cov-pick" value="${escapeHTML(x.sku)}" ${(mode==='FILTER'||c.sel.has(x.sku))?'checked':''} ${mode==='FILTER'?'disabled':''} aria-label="Pilih ${escapeHTML(x.name)}"/></td>`:''}<td class="nm">${nameBadge(x.name,x.category)}</td><td class="num"><span class="ratio ${x.ratio?'r1':'r0'}">${n(x.ratio)}x</span><small class="cov-diff">${n(x.counted_ratio)}x SO · ${n(x.skipped_ratio)}x Lewati</small>${x.history_status==='KOREKSI_LOGIS'?`<small class="cov-diff">Data lama: ${n(x.stored_ratio)}x</small>`:''}</td><td>${x.history_status==='PERLU_VERIFIKASI'?'<span class="chip orange"><i></i>Perlu verifikasi</span>':x.history_status==='KOREKSI_LOGIS'?'<span class="chip blue"><i></i>Rekonsiliasi</span>':x.status==='SUDAH'?chip('TALLY','TERCATAT SO'):x.status==='DILEWATI'?'<span class="chip orange"><i></i>Dilewati (belum dihitung)</span>':chip('BELUM','BELUM SO')}</td><td>${x.unlocked?'<span class="chip green"><i></i>Dibuka Master</span>':x.eligible?'<span class="chip blue"><i></i>Bisa dipilih</span>':'<span class="chip red"><i></i>Terkunci</span>'}</td>${isAdmin()?`<td>${x.unlocked?btn('Cabut','cov-lock','outline',{sku:x.sku}):!x.eligible?btn('Buka Kunci','cov-unlock','outline',{sku:x.sku}):btn('Lewati','cov-skip','outline',{sku:x.sku})}</td>`:''}</tr>`).join('')||`<tr><td colspan="${isAdmin()?6:4}" class="empty">Tidak ada item pada filter ini.</td></tr>`}
   </tbody></table></div>
   <div class="pager"><span class="small muted">${n(d.total_filtered?c.offset+1:0)}–${n(Math.min(c.offset+50,d.total_filtered))} dari ${n(d.total_filtered)} item</span><div class="row">${btn('← Sebelumnya','cov-prev','outline')}${btn('Berikutnya →','cov-next','outline')}</div></div>
  </div>`;
@@ -1783,6 +1789,24 @@ ACT['cov-unlock']=el=>covOverride([el.dataset.sku],'UNLOCK');
 ACT['cov-lock']=el=>covOverride([el.dataset.sku],'LOCK');
 ACT['cov-unlock-selected']=()=>covOverride([...state.cov.sel||[]],'UNLOCK',true);
 ACT['cov-lock-selected']=()=>covOverride([...state.cov.sel||[]],'LOCK',true);
+// LEWATI untuk menyelesaikan cakupan, tanpa pernah mengubah angka stok/hasil fisik.
+// Tindakan dibatasi 50 item per transaksi, tidak dapat memakai seluruh hasil filter sekaligus.
+async function covSkip(items){
+ if(!isAdmin())throw Error('Lewati hanya untuk Master/Admin.');
+ const c=state.cov;
+ if(c.selectMode==='FILTER')throw Error('Untuk Lewati, pilih maksimal 50 item (mode Beberapa atau Halaman) agar dapat diverifikasi satu per satu.');
+ if(!items.length)return toast('Pilih item terlebih dahulu.',true);
+ if(items.length>50)throw Error('Maksimal 50 item per tindakan.');
+ const reason=prompt(`Alasan item tidak tersedia di toko ${labelStore(c.store)} untuk ${items.length} item (minimal 8 karakter):`);
+ if(reason===null)return;
+ if(reason.trim().length<8)throw Error('Alasan Lewati minimal 8 karakter.');
+ if(!confirm(`Tandai ${items.length} item sebagai DILEWATI untuk menyelesaikan rasio cakupan? HANYA item dengan stok sistem 0 dan tidak berada dalam jadwal/SO aktif. Tidak menghitung fisik, tidak membuat selisih, BA, atau hasil Counting.`))return;
+ const out=await rpc('skip_items',{p_store:c.store,p_items:items,p_reason:reason.trim()});
+ covClearSelection();toast(`${n(out.skipped)} item dilewati. Rasio cakupan tercatat terpisah dari SO fisik.`);await showCoverage();
+}
+ACT['cov-skip']=el=>covSkip([el.dataset.sku]);
+ACT['cov-skip-selected']=()=>covSkip([...state.cov.sel||[]]);
+
 
 /* ---------- Pembersihan Database (Admin) ---------- */
 const clnParams=()=>({p_audit_days:Math.max(1,Number($('#clnAudit')?.value)||365),p_upload_days:Math.max(1,Number($('#clnUpload')?.value)||30)});
@@ -1843,7 +1867,6 @@ function presActivity(){
  if(pg==='schedule')return state.builder?'Membuat / mengubah jadwal SO':'Melihat jadwal SO';
  if(pg==='ba')return state.ba?.open?'Berita Acara (detail)':'Daftar Berita Acara';
  if(pg==='coverage')return 'Cakupan Item';
- if(pg==='tracking')return 'Tracking SO';
  if(pg==='upload')return 'Upload inventory';
  if(pg==='export')return 'Export & pembersihan';
  if(pg==='admin')return 'Manajemen akses';
@@ -2280,76 +2303,3 @@ ACT['admin-delete']=async el=>{
  toast('Akun dihapus permanen.');await render();
 };
 sb.auth.onAuthStateChange((ev)=>{if(ev==='PASSWORD_RECOVERY')setTimeout(()=>openPassModal(true),400)});
-
-/* ---------- Tracking SO v43: sumber status per item dan toko ---------- */
-const TRACK_SOURCE={HASIL_HITUNG:'Hasil hitung lengkap',BARIS_BELUM_LENGKAP:'Baris hitung belum lengkap',SNAPSHOT_CAKUPAN:'Cakupan SO; hasil hitung dibersihkan',CAKUPAN_JADWAL:'Cakupan jadwal / belum tercatat putaran'};
-function trackingReason(x,summary={}){
- if(x.unlocked||x.unlock?.active)return 'Dibuka Master untuk satu putaran tambahan.';
- if(x.history_status==='PERLU_VERIFIKASI'||x.evidence_status==='PERLU_VERIFIKASI')return 'Riwayat belum lengkap. Rasio lama dipertahankan; perlu verifikasi arsip.';
- if(Number(summary.incomplete)>0||x.latest_source==='BARIS_BELUM_LENGKAP')return 'Ada SO tercatat dengan baris hitung belum lengkap. Periksa dokumen asal sebelum menyimpulkan sudah dihitung.';
- if(Number(x.ratio??x.effective_rounds)===0&&!x.eligible)return 'Ketidaksesuaian: rasio 0x tetapi terkunci. Jalankan audit aturan server.';
- if(Number(summary.scope_only)>0&&Number(summary.count_complete)===0)return 'Putaran berasal dari snapshot cakupan SO. Detail qty sudah dibersihkan dan perlu dicocokkan dengan arsip.';
- if(Number(x.ratio??x.effective_rounds)===0)return 'Tidak ada putaran SO terbukti pada toko ini. Item dapat dipilih.';
- if(!x.eligible)return 'Rasio item lebih tinggi dari putaran terendah toko. Tunggu pemerataan putaran atau verifikasi melalui Master.';
- return 'Rasio item berada pada putaran yang dapat dipilih.';
-}
-const trackNumber=x=>x==null?'—':n(x);
-function trackFilters(t){return {p_store:t.store,p_filter:t.filter,p_search:t.search,p_offset:t.offset,p_limit:50}};
-async function showTracking(){
- const t=state.tracking;
- if(state.me.role==='store')t.store=state.me.store_code;
- else if(!state.stores.some(s=>s.code===t.store))t.store=state.store||state.stores[0]?.code||'';
- if(!t.store)throw Error('Tidak ada toko yang dapat diakses.');
- if(t.item)return showTrackingDetail();
- const epoch=++t.epoch,args=trackFilters(t),d=await rpc('item_tracking',args);
- if(epoch!==t.epoch||state.page!=='tracking')return;
- if(d.tracking_version!==43)throw Error('Tracking SO memerlukan migrasi 040 setelah 039.');
- t.data=d;const s=d.summary||{};
- $('#content').innerHTML=`<div class="card filter-card"><div class="filters">
- ${state.me.role!=='store'?`<label class="field">Toko<select class="input select" data-change="track-store">${storeOptions(t.store,false)}</select></label>`:`<span class="chip blue">${escapeHTML(labelStore(t.store))}</span>`}
- <label class="field track-search">Nama item<input class="input" id="trackSearch" maxlength="120" value="${escapeHTML(t.search)}" placeholder="Contoh: HITAM 30S"/></label>
- <label class="field">Status<select class="input select" data-change="track-filter">${[['ALL','Semua'],['BELUM','Belum SO'],['SUDAH','Tercatat dalam SO'],['TERKUNCI','Terkunci'],['DIPILIH','Bisa dipilih'],['REVIEW','Perlu verifikasi'],['KOREKSI','Rekonsiliasi']].map(([v,l])=>`<option value="${v}" ${v===t.filter?'selected':''}>${l}</option>`).join('')}</select></label>
- ${btn('Cari','track-search','primary')}${btn('Reset','track-reset','outline')}${btn('CSV hasil filter','track-csv','outline')}</div></div>
- <div class="note info">${n(s.total)} item toko · ${n(s.terkunci)} terkunci · ${n(s.review)} perlu verifikasi. Klik item untuk melihat nomor SO, tanggal, sumber bukti dan alasan penguncian. Rasio bukan bukti bahwa hasil hitung masih tersedia.</div>
- <div class="card"><div class="tablewrap track-table"><table><thead><tr><th>Item</th><th>Rasio</th><th>Pemilihan</th><th>Riwayat</th><th>SO terbaru</th><th>Tanggal</th></tr></thead><tbody>
- ${(d.items||[]).map(x=>`<tr><td><button class="track-item" data-act="track-open" data-item="${escapeHTML(x.sku)}">${nameBadge(x.name,x.category)}</button><small class="track-reason">${escapeHTML(trackingReason(x))}</small></td><td>${n(x.ratio)}x<small class="track-reason">Tersimpan ${n(x.stored_ratio)}x</small></td><td>${chip(x.eligible?'TALLY':'SELISIH',x.unlocked?'Dibuka Master':x.eligible?'Bisa dipilih':'Terkunci')}</td><td>${escapeHTML(x.history_status==='PERLU_VERIFIKASI'?'Perlu verifikasi':x.history_status==='KOREKSI_LOGIS'?'Rekonsiliasi':Number(x.ratio)>0?'Tercatat dalam SO':'Belum SO')}</td><td class="mono">${escapeHTML(x.latest_so||'—')}<small class="track-reason">${escapeHTML(TRACK_SOURCE[x.latest_source]||'Belum ada riwayat detail')}</small></td><td>${fmtDate(x.latest_date)}</td></tr>`).join('')||'<tr><td colspan="6" class="empty">Tidak ada item sesuai filter.</td></tr>'}
- </tbody></table></div><div class="pager"><span>${n(d.total_filtered)} item · halaman ${Math.floor(t.offset/50)+1}</span><div class="row">${btn('← Sebelumnya','track-prev','outline')}${btn('Berikutnya →','track-next','outline')}</div></div></div>`;
- $('#trackSearch')?.addEventListener('keydown',e=>{if(e.key==='Enter')ACT['track-search']().catch(ex=>toast(ex.message,true))});
-}
-function trackDetailArgs(t,offset=t.historyOffset){return {p_store:t.store,p_item:t.item,p_from:t.from||null,p_to:t.to||null,p_offset:offset,p_limit:50}};
-async function showTrackingDetail(){
- const t=state.tracking,epoch=++t.epoch,args=trackDetailArgs(t),d=await rpc('item_tracking_detail',args);
- if(epoch!==t.epoch||state.page!=='tracking')return;
- if(d.version!==43)throw Error('Perbarui SQL Tracking SO 040.');
- t.detail=d;const x=d.item,s=d.summary||{},review=x.evidence_status==='PERLU_VERIFIKASI'||s.incomplete>0;
- $('#content').innerHTML=`<div class="card"><div class="row">${btn('← Daftar item','track-back','outline')}<strong>${escapeHTML(labelStore(t.store))}</strong></div><h2>${escapeHTML(x.item_name)}</h2>
- <div class="note ${review?'warning':'info'}">${escapeHTML(trackingReason(x,s))}</div>
- <div class="track-stats"><div><small>Rasio efektif / tersimpan</small><b>${n(x.effective_rounds)}x / ${n(x.stored_rounds)}x</b></div><div><small>Hasil hitung lengkap, putaran tercatat</small><b>${n(s.count_complete)}</b></div><div><small>Hanya snapshot cakupan</small><b>${n(s.scope_only)}</b></div><div><small>Arsip tanpa cakupan pasti di toko</small><b>${n(x.uncertain_cycles)}</b></div></div>
- <p class="muted small">Rasio dan alasan kunci memakai seluruh riwayat toko. Filter tanggal di bawah hanya membatasi daftar riwayat. Nol pada hasil hitung tetap merupakan angka yang sah; kosong berarti belum lengkap. Riwayat yang telah dihapus tanpa jejak tidak dapat direkonstruksi. Referensi SO memakai ID tetap; nomor SO di menu jadwal dibuat oleh tampilan. Qty sistem/final disembunyikan dari Store saat SO masih berjalan.</p>
- ${x.unlock?.active?`<p class="note info">Alasan Master: ${escapeHTML(x.unlock.reason||'—')}</p>`:''}
- <div class="row">${btn('Lihat di Cakupan Item','track-coverage','outline')}</div></div>
- <div class="card"><div class="filters"><label class="field">Dari tanggal SO<input type="date" class="input" id="trackFrom" value="${escapeHTML(t.from)}"/></label><label class="field">Sampai tanggal SO<input type="date" class="input" id="trackTo" value="${escapeHTML(t.to)}"/></label>${btn('Terapkan','track-dates','primary')}${btn('Semua tanggal','track-dates-clear','outline')}${btn('CSV riwayat sesuai filter','track-history-csv','outline')}</div>
- <div class="tablewrap track-table"><table><thead><tr><th>Referensi SO / BA</th><th>Tanggal</th><th>Status SO</th><th>Sumber bukti</th><th>Masuk rasio</th><th>Qty sistem</th><th>Qty hitung / final</th><th>Tim / pengubah terakhir</th></tr></thead><tbody>
- ${(d.events||[]).map(e=>`<tr><td class="mono">${escapeHTML(e.so_no)}<small class="track-reason">${escapeHTML(e.ba_no||'Belum ada BA')}</small><details><summary>ID SO</summary>${escapeHTML(e.cycle_id)}</details></td><td>${fmtDate(e.so_date)}</td><td>${chip(e.cycle_status)}${e.archived?'<small class="track-reason">Diarsipkan</small>':''}</td><td>${escapeHTML(TRACK_SOURCE[e.evidence_source]||e.evidence_source)}</td><td>${e.credited?'Ya':'Tidak'}</td><td>${trackNumber(e.system_qty)}</td><td>${trackNumber(e.actual_qty)} / ${trackNumber(e.final_qty)}</td><td>${escapeHTML(e.team||'—')}<small class="track-reason">${escapeHTML(e.updated_by||'Belum ada pengubah')}</small><small class="track-reason">${e.updated_at?escapeHTML(new Date(e.updated_at).toLocaleString('id-ID',{timeZone:'Asia/Makassar'}))+' WITA':''}</small></td></tr>`).join('')||'<tr><td colspan="8" class="empty">Tidak ada riwayat pada rentang ini. Arsip tanpa detail/cakupan tidak dapat dipastikan sebagai riwayat item ini.</td></tr>'}
- </tbody></table></div><div class="pager"><span>${n(d.total_filtered)} riwayat · halaman ${Math.floor(t.historyOffset/50)+1}</span><div class="row">${btn('← Sebelumnya','track-history-prev','outline')}${btn('Berikutnya →','track-history-next','outline')}</div></div></div>`;
-}
-async function trackOpen(item,store){const t=state.tracking;t.store=store||t.store;t.item=item;t.from='';t.to='';t.historyOffset=0;state.page='tracking';await render()}
-CHG['track-store']=async e=>{Object.assign(state.tracking,{store:e.value,offset:0,item:null});await showTracking()};
-CHG['track-filter']=async e=>{state.tracking.filter=e.value;state.tracking.offset=0;await showTracking()};
-ACT['track-search']=async()=>{state.tracking.search=$('#trackSearch').value.trim();state.tracking.offset=0;await showTracking()};
-ACT['track-reset']=async()=>{Object.assign(state.tracking,{search:'',filter:'ALL',offset:0,item:null});await showTracking()};
-ACT['track-open']=el=>trackOpen(el.dataset.item);
-ACT['cov-track']=el=>trackOpen(el.dataset.item,state.cov.store);
-ACT['track-back']=async()=>{state.tracking.item=null;await showTracking()};
-ACT['track-prev']=async()=>{state.tracking.offset=Math.max(0,state.tracking.offset-50);await showTracking()};
-ACT['track-next']=async()=>{const t=state.tracking;if(t.offset+50>=t.data.total_filtered)return;t.offset+=50;await showTracking()};
-ACT['track-history-prev']=async()=>{state.tracking.historyOffset=Math.max(0,state.tracking.historyOffset-50);await showTrackingDetail()};
-ACT['track-history-next']=async()=>{const t=state.tracking;if(t.historyOffset+50>=t.detail.total_filtered)return;t.historyOffset+=50;await showTrackingDetail()};
-ACT['track-dates']=async()=>{const from=$('#trackFrom').value,to=$('#trackTo').value;if(from&&to&&from>to)throw Error('Tanggal akhir harus setelah tanggal awal.');Object.assign(state.tracking,{from,to,historyOffset:0});await showTrackingDetail()};
-ACT['track-dates-clear']=async()=>{Object.assign(state.tracking,{from:'',to:'',historyOffset:0});await showTrackingDetail()};
-ACT['track-coverage']=async()=>{Object.assign(state.cov,{store:state.tracking.store,search:state.tracking.item,filter:'ALL',offset:0});covClearSelection();state.page='coverage';await render()};
-function trackCsvCell(v){let s=String(v??'');if(typeof v==='string'&&/^[\s]*[=+@-]/.test(s))s="'"+s;return '"'+s.replaceAll('"','""')+'"'}
-function trackCsvDownload(name,headers,rows){const text='\uFEFF'+[headers,...rows].map(r=>r.map(trackCsvCell).join(',')).join('\r\n');const u=URL.createObjectURL(new Blob([text],{type:'text/csv;charset=utf-8'})),a=document.createElement('a');a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),2000)}
-async function trackAllPages(name,args,key){let out=[],total=null;for(let at=0;;at+=50){const d=await rpc(name,{...args,p_offset:at,p_limit:50});if(total!==null&&total!==d.total_filtered)throw Error('Data berubah selama ekspor. Ulangi ekspor.');total=d.total_filtered;const rows=d[key]||[];out.push(...rows);if(out.length>=total)return out;if(!rows.length)throw Error('Riwayat belum lengkap. CSV dibatalkan.');if(out.length>=10000)throw Error('Lebih dari 10.000 baris. Persempit filter ekspor.')}}
-ACT['track-csv']=async()=>{const t={...state.tracking},rows=await trackAllPages('item_tracking',trackFilters(t),'items');trackCsvDownload('Tracking_SO_'+t.store+'.csv',['Toko','Item','Kategori','Rasio efektif','Rasio tersimpan','Status riwayat','Bisa dipilih','Alasan','SO terbaru','Tanggal SO terbaru'],rows.map(x=>[t.store,x.name,x.category,x.ratio,x.stored_ratio,x.history_status,x.eligible?'Ya':'Tidak',trackingReason(x),x.latest_so,x.latest_date]))};
-ACT['track-history-csv']=async()=>{const t={...state.tracking},rows=await trackAllPages('item_tracking_detail',trackDetailArgs(t,0),'events');trackCsvDownload('Riwayat_SO_'+t.store+'.csv',['Toko','Item','ID SO','Referensi SO','Tanggal','Status','BA','Sumber bukti','Masuk rasio','Qty sistem','Qty hitung','Qty final','Tim','Pengubah terakhir','Waktu perubahan','Arsip'],rows.map(e=>[t.store,t.item,e.cycle_id,e.so_no,e.so_date,e.cycle_status,e.ba_no,TRACK_SOURCE[e.evidence_source]||e.evidence_source,e.credited?'Ya':'Tidak',e.system_qty,e.actual_qty,e.final_qty,e.team,e.updated_by,e.updated_at,e.archived?'Ya':'Tidak']))};
